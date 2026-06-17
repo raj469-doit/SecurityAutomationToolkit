@@ -1,4 +1,14 @@
-config.example.yaml
-config.yaml
-.env
-reports/
+# config.example.yaml
+scan_settings:
+  default_timeout: 12
+  allow_redirects: true
+  max_redirects_limit: 5
+
+# Production risk weight management
+severity_weights:
+  Strict-Transport-Security: 20
+  Content-Security-Policy: 25
+  X-Frame-Options: 15
+  X-Content-Type-Options: 10
+  Secure-Cookie-Flag: 15
+  HttpOnly-Cookie-Flag: 15
