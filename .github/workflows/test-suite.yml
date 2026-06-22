@@ -61,7 +61,7 @@ jobs:
       # Executes the PyTest suite safely using unittest.mock to protect live infrastructure from scanning traffic
       - name: Run Deterministic Web Security Tests
         run: |
-          python -m pytest tests/ --v --junitxml=junit/test-results.xml
+          python -m pytest tests/ -v --junitxml=junit/test-results.xml
 
       # Step 6: Artifact Preservation
       # Saves the JUnit execution metadata so QA and Security architectures can review test validation history
