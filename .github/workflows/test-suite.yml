@@ -34,7 +34,7 @@ jobs:
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-python-version: '3.11'
+          python-version: '3.11'
           cache: 'pip'      # Automatically caches dependencies to optimize subsequent workflow run durations
 
       # Step 3: Install core dependencies via virtual environment safety practices
