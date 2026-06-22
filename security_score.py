@@ -23,6 +23,89 @@ logging.basicConfig(
 )
 logger = logging.getLogger("SecurityToolkit.Engine")
 
+# =====================================================================
+# ADD THIS TO THE TOP PORTION OR CLASS DEFINITIONS IN security_score.py
+# =====================================================================
+
+class SecurityScorer:
+    """
+    Evaluates scan postures using a Weighted Severity and Deductive Scoring Model,
+    mapped conceptually to industry standard severity tiers (CVSS/OWASP).
+    """
+    def __init__(self):
+        self.SEVERITY_WEIGHTS = {
+            "CRITICAL": 50,
+            "HIGH": 30,
+            "MEDIUM": 15,
+            "LOW": 5
+        }
+        
+    def calculate_score(self, scan_results: dict) -> dict:
+        base_score = 100
+        total_deductions = 0
+        detailed_deductions = []
+
+        # 1. SSL/TLS Status Check
+        if not scan_results.get("ssl_valid", True):
+            deduction = self.SEVERITY_WEIGHTS["CRITICAL"]
+            total_deductions += deduction
+            detailed_deductions.append(f"CRITICAL: Invalid or expired SSL Certificate (-{deduction} pts)")
+
+        # 2. Security Headers Deductions Matrix
+        missing_headers = scan_results.get("missing_headers", [])
+        for header in missing_headers:
+            if header in ["Content-Security-Policy", "X-Frame-Options"]:
+                deduction = self.SEVERITY_WEIGHTS["HIGH"]
+                total_deductions += deduction
+                detailed_deductions.append(f"HIGH: Missing {header} header (-{deduction} pts)")
+            elif header in ["Strict-Transport-Security"]:
+                deduction = self.SEVERITY_WEIGHTS["MEDIUM"]
+                total_deductions += deduction
+                detailed_deductions.append(f"MEDIUM: Missing {header} header (-{deduction} pts)")
+            else:
+                deduction = self.SEVERITY_WEIGHTS["LOW"]
+                total_deductions += deduction
+                detailed_deductions.append(f"LOW: Missing {header} header (-{deduction} pts)")
+
+        # 3. Session / Cookie Vulnerabilities 
+        insecure_cookies = scan_results.get("insecure_cookies", 0)
+        if insecure_cookies > 0:
+            deduction = min(insecure_cookies * self.SEVERITY_WEIGHTS["MEDIUM"], 45) # Max penalty boundary cap
+            total_deductions += deduction
+            detailed_deductions.append(f"MEDIUM: {insecure_cookies} cookie(s) lacking Secure/HttpOnly flags (-{deduction} pts)")
+
+        # Finalize Math Bounds
+        final_score = max(0, base_score - total_deductions)
+        
+        # Risk Grade Categorization
+        if final_score >= 90:
+            grade = "A (Low Risk)"
+        elif final_score >= 75:
+            grade = "B (Medium Risk)"
+        elif final_score >= 50:
+            grade = "C (High Risk)"
+        else:
+            grade = "F (Critical Risk)"
+
+        return {
+            "score": final_score,
+            "grade": grade,
+            "breakdown": detailed_deductions
+        }
+
+# =====================================================================
+# UPDATE YOUR CORE EXECUTION OR RUN LOOP IN security_score.py
+# =====================================================================
+# inside your execution coordinator function (e.g., main or scan runner):
+#
+# scan_payload = {
+#     "ssl_valid": ssl_status,
+#     "missing_headers": list_of_missing_headers,
+#     "insecure_cookies": count_of_unsafe_cookies
+# }
+# scorer = SecurityScorer()
+# final_metrics = scorer.calculate_score(scan_payload)
+# logger.info(f"Scan Completed. Target Score: {final_metrics['score']} - Grade: {final_metrics['grade']}")
 
 class SecurityScanner:
     """
