@@ -1,0 +1,68 @@
+# ==============================================================================
+# GitHub Actions Workflow: Automated Security Test Suite
+# Core Concept: "Triad of Integrity" (Troubleshooting, QA, and Cybersecurity)
+# Target Application: Security Automation Toolkit (OWASP Web Security Validation)
+# ==============================================================================
+
+name: Security Automation Toolkit Test Suite
+
+# Define explicit triggers to prevent unnecessary CI execution costs
+on:
+  push:
+    branches: [ "main" ]    # Triggers on code integrations to the primary branch
+  pull_request:
+    branches: [ "main" ]    # Triggers on proposed changes to catch security regressions early
+  schedule:
+    - cron: '0 2 * * 1'     # Runs weekly at 2:00 AM UTC on Mondays for continuous drift monitoring
+
+# Enforce strict permission scoping to adhere to the Principle of Least Privilege
+permissions:
+  contents: read            # Grants read-only access to repository code (sufficient for static/local execution)
+
+jobs:
+  validate-and-test:
+    name: Execute Validation Framework
+    runs-on: ubuntu-latest  # Standardized, ephemeral Linux runner environment
+    
+    steps:
+      # Step 1: Checkout codebase
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      # Step 2: Establish the execution environment
+      # Python 3.11 balances modern language capabilities with dependencies like PyTest and BeautifulSoup4
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-python-version: '3.11'
+          cache: 'pip'      # Automatically caches dependencies to optimize subsequent workflow run durations
+
+      # Step 3: Install core dependencies via virtual environment safety practices
+      - name: Install Testing Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      # Step 4: Code Quality Check
+      # Enforces clean coding architectures and prevents syntax or layout defects from hitting production
+      - name: Lint Code with Flake8
+        run: |
+          # stop the build if there are Python syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # exit-zero treats all errors as warnings. The GitHub Editor is 127 chars wide
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      # Step 5: Isolated Test Framework Execution
+      # Executes the PyTest suite safely using unittest.mock to protect live infrastructure from scanning traffic
+      - name: Run Deterministic Web Security Tests
+        run: |
+          python -m pytest tests/ --v --junitxml=junit/test-results.xml
+
+      # Step 6: Artifact Preservation
+      # Saves the JUnit execution metadata so QA and Security architectures can review test validation history
+      - name: Archive Test Validation Reports
+        uses: actions/upload-artifact@v4
+        if: always()        # Ensures reports are uploaded even if individual unit tests fail
+        with:
+          name: pytest-results
+          path: junit/test-results.xml
