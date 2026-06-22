@@ -1,143 +1,104 @@
-import os
+import sys
 import argparse
 import logging
-import sys
 import requests
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 
-# PROD-READY: Set up a structured logger instead of arbitrary print() statements
-# This allows logs to be easily routed to stdout, files, or SIEM tools.
+# Initialize production-grade logging
 logging.basicConfig(
-    level=logging.INFO, 
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[logging.StreamHandler(sys.stdout)]
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("SecurityToolkit.Engine")
 
-def parse_command_line_arguments():
-    """
-    Parses and strictly validates incoming command-line execution parameters.
-    Ensures that a target URL is always explicitly provided before scanning begins.
-    """
-    parser = argparse.ArgumentParser(
-        description="OWASP-Aligned Security QA Automation Framework"
-    )
-    
-    # Require the URL argument directly from the command line interface
-    parser.add_argument(
-        "-u", "--url",
-        type=str,
-        required=True,
-        help="The target website URL to evaluate (e.g., https://example.com)"
-    )
-    
-    # Optional: Allow changing the output path via CLI flag
-    parser.add_argument(
-        "-o", "--output",
-        type=str,
-        default="reports/security_report.html",
-        help="Destination path for the generated HTML report"
-    )
+class SecurityScanner:
+    def __init__(self, timeout=10, user_agent="SecurityAutomationToolkit/1.0"):
+        self.timeout = timeout
+        self.headers = {"User-Agent": user_agent}
 
-    return parser.parse_args()
-
-def analyze_target_security(url, timeout=10, allow_redirects=True):
-    """
-    Evaluates the security posture of a target website.
-    Handles network environments safely using strict exception blocks and boundaries.
-    """
-    # PROD-READY: Enforce rigorous input sanitization and verification
-    parsed_url = urlparse(url)
-    if not parsed_url.scheme or not parsed_url.netloc:
-        logger.error(f"Execution aborted: Malformed or invalid target URL provided: '{url}'")
-        raise ValueError("A complete URL including a schema (http or https) must be explicitly passed.")
-
-    logger.info(f"Initiating production-grade security scan for target: {url}")
-    
-    # PROD-READY: Mimic standard client headers to avoid immediate blocklists by basic WAFs
-    request_headers = {
-        'User-Agent': 'SecurityAutomationToolkit/1.0 (Automated QA Security Pipeline)'
-    }
-    
-    results = {
-        "url": url,
-        "score": 100,
-        "missing_headers": [],
-        "cookie_vulnerabilities": [],
-        "errors": []
-    }
-
-    try:
-        # PROD-READY: Enforce definitive timeouts to keep the execution pipeline from hanging indefinitely
-        response = requests.get(
-            url, 
-            timeout=timeout, 
-            headers=request_headers, 
-            allow_redirects=allow_redirects
-        )
+    def scan_endpoint(self, url: str) -> dict:
+        """Orchestrates security posture evaluation on a single real estate URL."""
+        logger.info(f"Initiating security scanning profile for: {url}")
         
-        # 1. Evaluate Security Headers
-        critical_headers = ["Strict-Transport-Security", "Content-Security-Policy", "X-Frame-Options"]
-        for header in critical_headers:
-            if header not in response.headers:
-                results["missing_headers"].append(header)
-                results["score"] -= 20 
+        findings = {
+            "target_url": url,
+            "tls_secured": False,
+            "missing_headers": [],
+            "cookie_violations": [],
+            "discovered_forms": [],
+            "errors": []
+        }
 
-        # 2. Cookie Attribute Validation
-        for cookie in response.cookies:
-            cookie_issues = []
-            if not cookie.secure:
-                cookie_issues.append("Missing 'Secure' flag")
+        # Validate SSL/TLS enforcement (OWASP A04)
+        parsed = urlparse(url)
+        if parsed.scheme == "https":
+            findings["tls_secured"] = True
+
+        try:
+            # Enforce request strict timeout limits to prevent pipeline hanging
+            response = requests.get(url, headers=self.headers, timeout=self.timeout, allow_redirects=True)
             
-            # Simple check for HttpOnly using standard attributes
-            if cookie.has_nonstandard_attr('HttpOnly') if hasattr(cookie, 'has_nonstandard_attr') else False:
-                pass
-            
-            if cookie_issues:
-                results["cookie_vulnerabilities"].append({"cookie": cookie.name, "issues": cookie_issues})
+            # Evaluate Security Headers (OWASP A02)
+            required_headers = [
+                "Strict-Transport-Security", 
+                "Content-Security-Policy", 
+                "X-Frame-Options", 
+                "X-Content-Type-Options"
+            ]
+            for header in required_headers:
+                if header not in response.headers:
+                    findings["missing_headers"].append(header)
 
-        # 3. Discovery Modules (e.g., Form discovery via BeautifulSoup)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        forms = soup.find_all('form')
-        logger.info(f"Scan complete for {url}. Discovered {len(forms)} HTML form elements.")
-        
-        return results
+            # Analyze Cookie Flag Configurations (OWASP A04)
+            for cookie in response.cookies:
+                issues = []
+                if not cookie.secure:
+                    issues.append("Missing 'Secure' directive")
+                # Structural fallback check for HttpOnly attributes
+                if not cookie.has_nonstandard_attr('HttpOnly') and 'httponly' not in [k.lower() for k in cookie._attributes]:
+                    issues.append("Missing 'HttpOnly' directive")
+                
+                if issues:
+                    findings["cookie_violations"].append({
+                        "cookie_name": cookie.name,
+                        "issues": issues
+                    })
 
-    # PROD-READY: Handle distinct exception scenarios gracefully without bringing down the runtime environment
-    except requests.exceptions.Timeout:
-        logger.error(f"Scan timeout occurred: Host {url} failed to respond within {timeout} seconds.")
-        results["errors"].append("Connection timed out")
-        results["score"] = 0
-        return results
-        
-    except requests.exceptions.SSLError as ssl_err:
-        logger.warning(f"SSL/TLS validation layer failure detected on {url}: {ssl_err}")
-        results["errors"].append(f"SSL Certificate Validation Failed: {ssl_err}")
-        results["score"] = max(0, results["score"] - 40)
-        return results
-        
-    except requests.exceptions.RequestException as general_err:
-        logger.error(f"Transport layer crash encountered on target {url}: {general_err}")
-        results["errors"].append(f"Network transport error: {str(general_err)}")
-        results["score"] = 0
-        return results
+            # Form & Attack Surface Parsing (Targeting OWASP A03/A05 Injection/Config vectors)
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for index, form in enumerate(soup.find_all('form')):
+                inputs = [inp.get('name') for inp in form.find_all(['input', 'textarea']) if inp.get('name')]
+                findings["discovered_forms"].append({
+                    "form_index": index,
+                    "action": form.get('action', ''),
+                    "method": form.get('method', 'get').lower(),
+                    "input_parameters": inputs
+                })
+
+        except requests.exceptions.Timeout:
+            logger.error(f"Scan timed out for destination: {url}")
+            findings["errors"].append("Network timeout error occurred")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network transport level anomaly on {url}: {str(e)}")
+            findings["errors"].append(f"Connection failure: {type(e).__name__}")
+
+        return findings
+
+def main():
+    parser = argparse.ArgumentParser(description="Automated Website Security Audit Engine")
+    parser.add_argument("--url", required=True, help="Target URL to assess")
+    args = parser.parse_args()
+
+    scanner = SecurityScanner()
+    scan_results = scanner.scan_endpoint(args.url)
+    
+    # Passing results to the reporting framework (simulated here)
+    print(f"--- SCAN EXECUTION SUMMARY FOR {scan_results['target_url']} ---")
+    print(f"Missing Headers: {scan_results['missing_headers']}")
+    print(f"Cookie Flags Violations: {scan_results['cookie_violations']}")
+    print(f"Forms Discovered: {len(scan_results['discovered_forms'])}")
 
 if __name__ == "__main__":
-    try:
-        # Parse command line inputs
-        args = parse_command_line_arguments()
-        
-        # Run security evaluation using the CLI-provided URL
-        scan_data = analyze_target_security(args.url)
-        
-        # Log final outcome brief summary
-        logger.info(f"Scan finalized. Overall Security Score: {scan_data['score']}/100")
-        
-        # (Optional integration step):
-        # from generate_report import generate_production_report
-        # generate_production_report(scan_data, output_path=args.output)
-        
-    except Exception as runtime_error:
-        logger.critical(f"Pipeline execution initialization failure: {runtime_error}")
-        sys.exit(1)
+    main()
