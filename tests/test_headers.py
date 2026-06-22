@@ -1,41 +1,55 @@
 import pytest
-from unittest.mock import patch, Mock
-import requests
-from security_score import analyze_target_security
+from unittest.mock import patch, MagicMock
+from security_score import SecurityScanner
 
 @patch('requests.get')
-def test_security_score_evaluation_with_missing_headers(mock_requests_get):
+def test_scanner_flags_missing_essential_security_headers(mock_get):
     """
-    PROD-READY: Mock-driven isolated unit test verifying parsing behavior 
-    without initiating any external internet transport requests.
+    OWASP A02 (Security Misconfiguration)
+    Verifies missing defensive headers are properly appended to the vulnerability array.
     """
-    # Configure an isolated Mock object acting as an insecure web server response
-    simulated_response = Mock()
-    simulated_response.status_code = 200
-    # Simulate an app architecture completely void of HSTS, CSP, and X-Frame
-    simulated_response.headers = {
-        'Content-Type': 'text/html; charset=utf-8',
-        'Server': 'Production-Target-Stub'
+    # Simulate a web infrastructure completely lacking security defenses
+    mock_response = MagicMock()
+    mock_response.headers = {
+        "Content-Type": "text/html",
+        "Server": "InsecureServer/1.0"
     }
-    simulated_response.cookies = []
-    simulated_response.text = "<html><body><form id='test'></form></body></html>"
-    
-    # Tie the mock return logic into the patched module target execution area
-    mock_requests_get.return_value = simulated_response
+    mock_response.cookies = []
+    mock_response.text = "<html><body>Plain Target Page</body></html>"
+    mock_get.return_value = mock_response
 
-    # Execute system behavior with fake input vector tracking targets
-    execution_metrics = analyze_target_security("https://internal-pipeline-test.local")
+    scanner = SecurityScanner()
+    results = scanner.scan_endpoint("https://vulnerable-realestate.com")
 
-    # Assert accurate behavior based on internal metric formulas
-    assert isinstance(execution_metrics, dict)
-    assert "Strict-Transport-Security" in execution_metrics["missing_headers"]
-    assert "Content-Security-Policy" in execution_metrics["missing_headers"]
-    assert execution_metrics["score"] < 100
-    
-    # Confirm our network system correctly isolated the calls parameters
-    mock_requests_get.assert_called_once_with(
-        "https://internal-pipeline-test.local", 
-        timeout=10, 
-        headers={'User-Agent': 'SecurityAutomationToolkit/1.0 (Automated QA Security Pipeline)'}, 
-        allow_redirects=True
-    )
+    # Assert that all standard evaluated configurations are recorded as missing
+    expected_missing = [
+        "Strict-Transport-Security",
+        "Content-Security-Policy",
+        "X-Frame-Options",
+        "X-Content-Type-Options"
+    ]
+    for header in expected_missing:
+        assert header in results["missing_headers"]
+
+
+@patch('requests.get')
+def test_scanner_passes_fully_hardened_infrastructure_headers(mock_get):
+    """
+    Verifies that targets configured with strict defensive headers do not trigger flags.
+    """
+    mock_response = MagicMock()
+    mock_response.headers = {
+        "Content-Type": "text/html",
+        "Strict-Transport-Security": "max-age=63072000; includeSubDomains",
+        "Content-Security-Policy": "default-src 'self'",
+        "X-Frame-Options": "DENY",
+        "X-Content-Type-Options": "nosniff"
+    }
+    mock_response.cookies = []
+    mock_response.text = "<html><body>Hardened Core Portal</body></html>"
+    mock_get.return_value = mock_response
+
+    scanner = SecurityScanner()
+    results = scanner.scan_endpoint("https://secure-realestate.com")
+
+    assert len(results["missing_headers"]) == 0
