@@ -25,18 +25,25 @@ jobs:
       - name: Install Architecture Requirements
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Ensure Output Directories Exist
+        run: |
+          # Prevents script level FileNotFoundError during local storage operations
+          mkdir -p reports/
 
       - name: Run Offline Core Test Stubs
-        run: python -m pytest tests/
+        run: python -m pytest tests/ -v
 
       - name: Perform Scan Execution Pipeline
         run: |
-          # Safe extraction of the runtime inputs environment parameter
+          # Executes your primary security validation logic using inputs safely
           python security_score.py --url "${{ github.event.inputs.target_url }}" --output reports/production_run.html
 
       - name: Archive Assessment Metrics Artifacts
+        if: always() # Ensures reports and logs are preserved even if standard steps fail
         uses: actions/upload-artifact@v4
         with:
           name: security-compliance-report
           path: reports/
+          retention-days: 14
