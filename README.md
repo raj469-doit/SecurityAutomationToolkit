@@ -1,40 +1,34 @@
-Security Automation Toolkit
-A production-grade, Python-based security assessment framework designed to automate deterministic, OWASP-aligned website security validation. Built on the core principle of the Triad of Integrity—unifying rigorous Troubleshooting, Automated Quality Assurance, and Cybersecurity best practices.
+# Security Automation Toolkit
 
-Features
-A05:2021-Security Misconfiguration Auditing
+[![Core Framework Test Suite](https://github.com/raj469-doit/SecurityAutomationToolkit/actions/workflows/test-suite.yml/badge.svg)](https://github.com/raj469-doit/SecurityAutomationToolkit/actions/workflows/test-suite.yml)
+[![Live Security Infrastructure Scan](https://github.com/raj469-doit/SecurityAutomationToolkit/actions/workflows/security-scan.yml/badge.svg)](https://github.com/raj469-doit/SecurityAutomationToolkit/actions/workflows/security-scan.yml)
 
-Robust Security Header Validation (HSTS, CSP, X-Frame-Options, etc.)
+A production-grade, Python-based security assessment framework designed to automate deterministic, OWASP-aligned website security validation. Built on the core principle of the **Triad of Integrity**—unifying rigorous Troubleshooting, Automated Quality Assurance, and Cybersecurity best practices.
 
-Automated Cookie Flag Verification (Secure, HttpOnly, SameSite tracking)
+## Features
 
-Transport Layer Posture Checks
+- **A05:2021-Security Misconfiguration Auditing**
+  - Robust Security Header Validation (HSTS, CSP, X-Frame-Options, etc.)
+  - Automated Cookie Flag Verification (`Secure`, `HttpOnly`, SameSite tracking)
+- **Transport Layer Posture Checks**
+  - Comprehensive SSL/TLS Validation (handles structural certificate anomalies, expiries, and connection faults cleanly)
+- **Application Target Discovery**
+  - Native `robots.txt` and Sitemap structural parsing via `BeautifulSoup`
+  - Automated form parsing and target vector tracking
+- **Continuous Integration / Continuous Deployment**
+  - Strict linting validation powered by `Flake8`
+  - Ephemeral, deterministic testing layers executing under isolated network constraints
 
-Comprehensive SSL/TLS Validation (handles structural certificate anomalies, expiries, and connection faults cleanly)
+## Technologies
 
-Application Target Discovery
+- **Core Engine:** Python 3.11, Requests, BeautifulSoup4
+- **Validation Framework:** PyTest (utilizing strict `unittest.mock` network isolation)
+- **CI/CD Pipelines:** GitHub Actions Core Runner (with integrated Pip caching and Artifact preservation)
+- **Static Analysis:** Flake8 Linting Execution Engine
 
-Native robots.txt and Sitemap structural parsing via BeautifulSoup
+## Project Architecture
 
-Automated form parsing and target vector tracking
-
-Continuous Integration / Continuous Deployment
-
-Strict linting validation powered by Flake8
-
-Ephemeral, deterministic testing layers executing under isolated network constraints
-
-Technologies
-Core Engine: Python 3.11, Requests, BeautifulSoup4
-
-Validation Framework: PyTest (utilizing strict unittest.mock network isolation)
-
-CI/CD Pipelines: GitHub Actions Core Runner (with integrated Pip caching and Artifact preservation)
-
-Static Analysis: Flake8 Linting Execution Engine
-
-Project Architecture
-Plaintext
+```text
 SecurityAutomationToolkit/
 │
 ├── .github/workflows/
@@ -51,6 +45,7 @@ SecurityAutomationToolkit/
 ├── generate_report.py           # Metrics Aggregator and Reporting Compiler
 ├── requirements.txt             # Production Runtime Dependencies
 └── requirements-dev.txt         # Quality Assurance & Engineering Tooling
+
 Setup & Installation
 This toolkit leverages decoupled dependency mapping to preserve a minimal attack surface and ensure deployment efficiency.
 
