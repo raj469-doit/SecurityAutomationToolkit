@@ -46,13 +46,13 @@ SecurityAutomationToolkit/
 ├── requirements.txt             # Production Runtime Dependencies
 └── requirements-dev.txt         # Quality Assurance & Engineering Tooling
 
-Setup & Installation
+## Setup & Installation
 This toolkit leverages decoupled dependency mapping to preserve a minimal attack surface and ensure deployment efficiency.
 
-Local Developer Installation (Full Suite + Testing tools)
+## Local Developer Installation (Full Suite + Testing tools)
+
 To install the scanner along with the pytest and flake8 engineering toolsets, execute the following within your virtual environment:
 
-Bash
 git clone https://github.com/raj469-doit/SecurityAutomationToolkit.git
 cd SecurityAutomationToolkit
 python -m venv venv
