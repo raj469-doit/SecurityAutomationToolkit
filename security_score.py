@@ -3,6 +3,7 @@ Security Automation Toolkit - CLI Scanner Execution Engine with Dynamic Scoring.
 
 This module orchestrates deterministic, OWASP-aligned security posture evaluations
 against website targets, incorporating a dynamic risk deduction weight matrix.
+Integrates with ComplianceReporter to auto-generate Phase 3 visual HTML and Markdown briefs.
 """
 
 import os
@@ -13,6 +14,9 @@ import json
 import requests
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
+
+# Import the reporting components natively from your updated reporting module
+from generate_report import ComplianceReporter
 
 # Initialize production-grade logging format for structural pipeline monitoring
 logging.basicConfig(
@@ -40,9 +44,6 @@ class SecurityScanner:
         """
         Processes findings through a deductive risk matrix to calculate
         the baseline security score, grade, and classification level.
-        
-        :param findings: The raw telemetry findings dictionary.
-        :return: An updated dictionary appended with posture evaluation scores.
         """
         score = 100
 
@@ -170,40 +171,116 @@ class SecurityScanner:
             findings["risk_level"] = "CRITICAL"
             return findings
 
-        # Run findings through the dynamic scoring logic step before returning
         return self.calculate_risk_posture(findings)
+
+
+def _map_telemetry_to_vulnerabilities(scan_results: dict) -> dict:
+    """
+    Transforms raw telemetry findings map into the normalized structural dictionary contract 
+    expected natively by the ComplianceReporter engine core.
+    """
+    vulnerabilities = []
+
+    if not scan_results["tls_secured"]:
+        vulnerabilities.append({
+            "owasp_category": "A04:2021-Cryptographic Failures",
+            "severity": "High",
+            "description": f"Unencrypted communication channel deployed over plaintext protocol scheme.",
+            "remediation": "Enforce sitewide permanent HSTS redirection protocols and bind application to TLS 1.3 endpoints."
+        })
+
+    high_risk_headers = ["Strict-Transport-Security", "Content-Security-Policy"]
+    for header in scan_results["missing_headers"]:
+        severity = "High" if header in high_risk_headers else "Medium"
+        vulnerabilities.append({
+            "owasp_category": "A05:2021-Security Misconfiguration",
+            "severity": severity,
+            "description": f"Missing HTTP security architecture directive header configuration: '{header}'.",
+            "remediation": f"Configure backend routing engine server blocks to inject explicit parameter declarations for '{header}'."
+        })
+
+    for cv in scan_results["cookie_violations"]:
+        for issue in cv["issues"]:
+            severity = "High" if "Secure" in issue else "Medium"
+            vulnerabilities.append({
+                "owasp_category": "A05:2021-Security Misconfiguration",
+                "severity": severity,
+                "description": f"Session identity token element cookie '{cv['cookie_name']}' dropped with '{issue}'.",
+                "remediation": f"Audit middleware interceptor logic state to bind appropriate security directives natively onto application runtime contexts."
+            })
+
+    return {
+        "target": scan_results["target_url"],
+        "final_score": scan_results["security_score"],
+        "vulnerabilities": vulnerabilities
+    }
 
 
 def main():
     """
-    Entry point for execution loops. Manages string parameters parsed from terminal invocation environments.
+    Entry point for execution loops. Controls execution metrics collection, 
+    historical baseline differential processing, and Phase 3 asset dumps.
     """
     parser = argparse.ArgumentParser(description="Automated Website Security Audit Engine")
     parser.add_argument("--url", required=True, help="Target URL to assess")
-    parser.add_argument("--output", required=False, default=None, help="Optional file path destination to output findings")
+    parser.add_argument("--output-dir", required=False, default="outputs", help="Directory target location for reporting asset generation")
     args = parser.parse_args()
 
+    # Create target pipeline directories up front
+    os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Establish persistent files path configurations inside our project workspace
+    raw_json_baseline_path = os.path.join(args.output_dir, "latest_scan_raw.json")
+    html_dashboard_path = os.path.join(args.output_dir, "security_dashboard.html")
+    markdown_brief_path = os.path.join(args.output_dir, "executive_brief.md")
+
+    # Run the core scanning operations loop
     scanner = SecurityScanner()
     scan_results = scanner.scan_endpoint(args.url)
     
-    # Print the execution outputs including the new calculated metrics
-    print(f"--- SCAN EXECUTION SUMMARY FOR {scan_results['target_url']} ---")
+    print(f"\n--- SCAN EXECUTION SUMMARY FOR {scan_results['target_url']} ---")
     print(f"Calculated Score: {scan_results['security_score']} ({scan_results['grade']}) - {scan_results['risk_level']} RISK")
     print(f"Missing Headers: {scan_results['missing_headers']}")
     print(f"Cookie Flags Violations: {scan_results['cookie_violations']}")
     print(f"Forms Discovered: {len(scan_results['discovered_forms'])}")
 
-    if args.output is not None:
-        try:
-            output_dir = os.path.dirname(args.output)
-            if output_dir:
-                os.makedirs(output_dir, exist_ok=True)
+    # 1. Structural schema adaptation translation step
+    current_report_payload = _map_telemetry_to_vulnerabilities(scan_results)
 
-            with open(args.output, "w", encoding="utf-8") as file:
-                json.dump(scan_results, file, indent=4)
-            logger.info(f"Vulnerability log metrics written successfully to target path: {args.output}")
-        except IOError as e:
-            logger.error(f"Failed to compile and write output report to {args.output}: {str(e)}")
+    # 2. Extract historical tracking metrics state cache if verified
+    historical_baseline_payload = None
+    if os.path.exists(raw_json_baseline_path):
+        try:
+            with open(raw_json_baseline_path, "r", encoding="utf-8") as f:
+                historical_baseline_payload = json.load(f)
+            logger.info("Historical state baseline tracking entity uncovered on disk. Orchestrating delta calculations...")
+        except Exception as e:
+            logger.error(f"Historical state mapping ingestion failure anomaly: {str(e)}")
+
+    # 3. Instantiate reporting pipeline engine core interface
+    reporter = ComplianceReporter(findings=current_report_payload, baseline=historical_baseline_payload)
+
+    # 4. Generate Interactive Visualization Dashboard Block
+    logger.info("Compiling dynamic standalone HTML5 visualization assets...")
+    reporter.generate_html(output_path=html_dashboard_path)
+
+    # 5. Generate Standalone Executive Brief Markdown Summaries
+    logger.info("Compiling high-level Markdown executive documentation brief...")
+    markdown_document_string = reporter.generate_markdown_summary()
+    try:
+        with open(markdown_brief_path, "w", encoding="utf-8") as f:
+            f.write(markdown_document_string)
+        logger.info(f"Executive Markdown brief successfully saved to pathway: {markdown_brief_path}")
+    except IOError as e:
+        logger.error(f"Failed to commit Markdown compliance brief out to disk stream interface: {str(e)}")
+
+    # 6. Cycle state signatures so current runs become next execution baseline anchors
+    try:
+        with open(raw_json_baseline_path, "w", encoding="utf-8") as f:
+            json.dump(current_report_payload, f, indent=4)
+        logger.info(f"Scan signatures updated successfully. Saved historical state tracking reference anchor: {raw_json_baseline_path}")
+    except IOError as e:
+        logger.error(f"Failed to cache persistent scanning transaction telemetry onto disk boundaries: {str(e)}")
 
 
 if __name__ == "__main__":
