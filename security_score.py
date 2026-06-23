@@ -133,7 +133,7 @@ class SecurityScanner:
                 if header not in response.headers:
                     findings["missing_headers"].append(header)
 
-           for cookie in response.cookies:
+            for cookie in response.cookies:
                 issues = []
                 if not cookie.secure:
                     issues.append("Missing 'Secure' directive")
