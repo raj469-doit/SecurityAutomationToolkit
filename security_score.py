@@ -133,11 +133,14 @@ class SecurityScanner:
                 if header not in response.headers:
                     findings["missing_headers"].append(header)
 
-            for cookie in response.cookies:
+           for cookie in response.cookies:
                 issues = []
                 if not cookie.secure:
                     issues.append("Missing 'Secure' directive")
-                if not cookie.has_nonstandard_attr('HttpOnly') and 'httponly' not in [k.lower() for k in cookie._attributes]:
+                
+                # Natively check for HttpOnly using standard cookiejar API boundaries
+                is_httponly = cookie.has_nonstandard_attr('HttpOnly') or cookie.has_nonstandard_attr('httponly')
+                if not is_httponly:
                     issues.append("Missing 'HttpOnly' directive")
                 
                 if issues:
