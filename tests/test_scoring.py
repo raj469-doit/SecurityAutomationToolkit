@@ -1,68 +1,86 @@
 import pytest
-# We import SecurityScorer assuming it will live inside security_score.py
-from security_score import SecurityScorer
+from security_score import SecurityScanner
 
 @pytest.fixture
-def scorer():
-    """Provides a fresh instance of SecurityScorer for each test."""
-    return SecurityScorer()
+def scanner():
+    """Provides a fresh instance of SecurityScanner for each test suite run."""
+    return SecurityScanner()
 
-def test_perfect_score(scorer):
-    """Verifies that a fully hardened site achieves a score of 100 and an A grade."""
-    mock_scan_results = {
-        "ssl_valid": True,
+def test_perfect_score(scanner):
+    """Verifies that a fully hardened HTTPS site achieves a score of 100 and a LOW risk rating."""
+    mock_findings = {
+        "target_url": "https://secure-estate.com",
+        "tls_secured": True,
         "missing_headers": [],
-        "insecure_cookies": 0
+        "cookie_violations": [],
+        "discovered_forms": []
     }
     
-    result = scorer.calculate_score(mock_scan_results)
+    result = scanner.calculate_risk_posture(mock_findings)
     
-    assert result["score"] == 100
-    assert "A" in result["grade"]
-    assert len(result["breakdown"]) == 0
+    assert result["security_score"] == 100
+    assert result["grade"] == "A"
+    assert result["risk_level"] == "LOW"
 
-def test_medium_risk_deductions(scorer):
-    """Verifies proportional deductions for a mixture of High, Medium, and Low missing headers."""
-    mock_scan_results = {
-        "ssl_valid": True,
-        "missing_headers": ["Content-Security-Policy", "Strict-Transport-Security", "X-Content-Type-Options"],
-        "insecure_cookies": 0
+def test_medium_risk_deductions(scanner):
+    """Verifies proportional deductions for missing headers."""
+    mock_findings = {
+        "target_url": "https://medium-risk.com",
+        "tls_secured": True,
+        # Missing Strict-Transport-Security (-15), Content-Security-Policy (-15), X-Content-Type-Options (-10)
+        "missing_headers": ["Strict-Transport-Security", "Content-Security-Policy", "X-Content-Type-Options"],
+        "cookie_violations": [],
+        "discovered_forms": []
     }
-    # Expected deductions: 
-    # CSP (HIGH: -30) + HSTS (MEDIUM: -15) + X-Content-Type-Options (LOW: -5) = -50 pts
-    expected_score = 100 - (30 + 15 + 5)
+    # Calculation: 100 - 15 - 15 - 10 = 60
+    expected_score = 60
     
-    result = scorer.calculate_score(mock_scan_results)
+    result = scanner.calculate_risk_posture(mock_findings)
     
-    assert result["score"] == expected_score
-    assert "C" in result["grade"]  # 50 points sits at a C grade boundary
-    assert len(result["breakdown"]) == 3
+    assert result["security_score"] == expected_score
+    assert result["grade"] == "C"
+    assert result["risk_level"] == "MEDIUM"
 
-def test_critical_failure_override(scorer):
-    """Verifies that a broken or expired SSL certificate severely impacts the security posture."""
-    mock_scan_results = {
-        "ssl_valid": False,  # Critical Risk
-        "missing_headers": [],
-        "insecure_cookies": 0
+def test_critical_failure_override(scanner):
+    """Verifies that an unencrypted HTTP channel and a missing Secure cookie severely impact posture."""
+    mock_findings = {
+        "target_url": "http://vulnerable-estate.com",
+        "tls_secured": False, # -25 points
+        "missing_headers": ["X-Frame-Options"], # -10 points
+        "cookie_violations": [
+            {
+                "cookie_name": "JSESSIONID",
+                "issues": ["Missing 'Secure' directive"] # -20 points
+            }
+        ],
+        "discovered_forms": []
     }
+    # Calculation: 100 - 25 - 10 - 20 = 45
+    expected_score = 45
     
-    result = scorer.calculate_score(mock_scan_results)
+    result = scanner.calculate_risk_posture(mock_findings)
     
-    # Expected deduction: SSL Invalid (CRITICAL: -50) -> Final score: 50
-    assert result["score"] == 50
-    assert "C" in result["grade"]
-    assert any("CRITICAL: Invalid or expired SSL" in detail for detail in result["breakdown"])
+    assert result["security_score"] == expected_score
+    assert result["grade"] == "D"
+    assert result["risk_level"] == "HIGH"
 
-def test_score_floor_limit(scorer):
-    """Ensures that even if an immense amount of violations are found, the score floor never drops below 0."""
-    mock_scan_results = {
-        "ssl_valid": False, # -50
-        "missing_headers": ["Content-Security-Policy", "X-Frame-Options", "Strict-Transport-Security"], # -30, -30, -15
-        "insecure_cookies": 10 # -45 max cap
+def test_score_floor_limit(scanner):
+    """Ensures that even with immense amounts of violations, the score floor never drops below 0."""
+    mock_findings = {
+        "target_url": "http://highly-exposed.com",
+        "tls_secured": False, # -25
+        "missing_headers": ["Strict-Transport-Security", "Content-Security-Policy", "X-Frame-Options", "X-Content-Type-Options"], # -15, -15, -10, -10
+        "cookie_violations": [
+            {
+                "cookie_name": "JSESSIONID",
+                "issues": ["Missing 'Secure' directive", "Missing 'HttpOnly' directive"] # -20, -10
+            }
+        ],
+        "discovered_forms": []
     }
-    # Total mathematical deductions = 50 + 30 + 30 + 15 + 45 = 170.
+    # Deductions go deep into negatives, but floor clamps it to 0
+    result = scanner.calculate_risk_posture(mock_findings)
     
-    result = scorer.calculate_score(mock_scan_results)
-    
-    assert result["score"] == 0
-    assert "F" in result["grade"]
+    assert result["security_score"] == 0
+    assert result["grade"] == "F"
+    assert result["risk_level"] == "CRITICAL"
