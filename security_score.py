@@ -216,6 +216,21 @@ def _map_telemetry_to_vulnerabilities(scan_results: dict) -> dict:
     }
 
 
+def _get_domain_filename(url: str) -> str:
+    """
+    Extracts and sanitizes the hostname from a URL to create a unique,
+    domain-scoped filename for tracking historical baselines.
+    """
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname or parsed.path
+        # Sanitize string: remove common prefixes and replace dots/special chars with underscores
+        clean_name = hostname.replace("www.", "").replace(".", "_").replace(":", "_")
+        return f"latest_scan_{clean_name}.json"
+    except Exception:
+        return "latest_scan_fallback.json"
+
+
 def main():
     """
     Entry point for execution loops. Controls execution metrics collection, 
@@ -229,8 +244,11 @@ def main():
     # Create target pipeline directories up front
     os.makedirs(args.output_dir, exist_ok=True)
     
-    # Establish persistent files path configurations inside our project workspace
-    raw_json_baseline_path = os.path.join(args.output_dir, "latest_scan_raw.json")
+    # NEW: Dynamically resolve the tracking file based strictly on the target domain
+    domain_scoped_filename = _get_domain_filename(args.url)
+    raw_json_baseline_path = os.path.join(args.output_dir, domain_scoped_filename)
+    
+    # Generic user-facing dashboard paths (overwritten per run for easy viewing)
     html_dashboard_path = os.path.join(args.output_dir, "security_dashboard.html")
     markdown_brief_path = os.path.join(args.output_dir, "executive_brief.md")
 
@@ -253,9 +271,11 @@ def main():
         try:
             with open(raw_json_baseline_path, "r", encoding="utf-8") as f:
                 historical_baseline_payload = json.load(f)
-            logger.info("Historical state baseline tracking entity uncovered on disk. Orchestrating delta calculations...")
+            logger.info(f"Historical baseline found for this specific domain ({domain_scoped_filename}). Evaluating deltas...")
         except Exception as e:
             logger.error(f"Historical state mapping ingestion failure anomaly: {str(e)}")
+    else:
+        logger.info(f"No previous baseline found for this specific domain. Treating as a baseline anchor scan.")
 
     # 3. Instantiate reporting pipeline engine core interface
     reporter = ComplianceReporter(findings=current_report_payload, baseline=historical_baseline_payload)
