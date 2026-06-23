@@ -5,6 +5,11 @@
 
 A production-grade, Python-based security assessment framework designed to automate deterministic, OWASP-aligned website security validation. Built on the core principle of the **Triad of Integrity**—unifying rigorous Troubleshooting, Automated Quality Assurance, and Cybersecurity best practices.
 
+## Architecture & Production Design
+The toolkit is built using standard, isolated execution patterns that decouple live application scanning from localized test suites:
+* **`security_score.py`**: The dynamic command-line core application. Enforces production-grade network defenses (strict request timeouts, graceful anomaly exception catching) and executes scans against any authorized target supplied via `--url`.
+* **`tests/`**: Fully decoupled from live network traffic utilizing unit-level mocks. Allows validation logic (how scoring elements are weighted, parsed, and calculated) to run instantly inside automated environments (such as GitHub Actions) without firing live outbound HTTP requests, preventing external firewall blocks or API rate limits.
+
 ## Features
 
 - **A05:2021-Security Misconfiguration Auditing**
@@ -40,6 +45,7 @@ SecurityAutomationToolkit/
 │   ├── test_forms.py
 │   ├── test_ssl.py
 │   └── test_security_score.py
+|   └── test_scoring.py
 │
 ├── security_score.py            # Primary CLI Scanner Execution Engine
 ├── generate_report.py           # Metrics Aggregator and Reporting Compiler
@@ -108,12 +114,13 @@ The Security Automation Toolkit is actively developed under a phased release cyc
 - [x] 100% Mocked Testing Architecture: Decoupled scanning mechanics from verification logic, leveraging unittest.mock to ensure zero out-of-band network traffic during local QA runs.
 - [x] Initial CI/CD Gates: Configured automated GitHub Actions workflows with dual-trigger controls (push/workflow_dispatch), pip dependency caching, and rigid Flake8 syntax validation.
 
-### Phase 2: Vulnerability Depth & Telemetry Expansion (In Progress)
-- [ ] Dynamic Attack Vector Mapping: Expand form parsing algorithms to detect and map parameters vulnerable to basic injection variants (e.g., Cross-Site Scripting stubs, SQLi patterns).
-- [ ] Advanced Certificate Analytics: Migrate from simple connection validation to deep cryptographic parsing, extracting specific cipher suite configurations, expiration countdowns, and signature algorithms.
-- [ ] Robust Local Data Storage: Transition from loose text logging to a structured workspace structure, safely writing telemetry data into an isolated local database layer (e.g., SQLite) prior to report formatting.
+### Phase 2: OWASP Top 10 Alignment & Security Scoring (100% Completed)
+- [x] Targeted Vulnerability Mapping: Map programmatic validation logic directly to OWASP A05:2021-Security Misconfiguration parameters to assess server configuration exposures.
+- [x] Production-Grade Network Defenses: Swapped fragile assumption patterns inside security_score.py for strict request timeouts and graceful error handling, ensuring the app never hangs indefinitely on sluggish or offline targets.
+- [x] Strict Posture Clamping Matrix: Engineer a deterministic mathematical scoring calculation engine that systematically docks weights based on findings, bound strictly by mathematical limits (0-100).
+- [x] Complete Test Layer Decoupling: Refactor all validation check structures inside tests/ using unit-level mocks so local execution behaves identically to pipeline runners without live outward traffic dependencies.
 
-### Phase 3: Enterprise Reporting & Executive Dashboards (Planned)
+### Phase 3: Enterprise Reporting & Executive Dashboards (In Progress)
 - [ ] Dynamic HTML5/CSS Visualizations: Upgrade the HTML reporting engine to compile standalone, interactive dashboards complete with color-coded severity charts (Critical, High, Medium, Low).
 - [ ] Executive Summary Generator: Introduce a compilation module that automatically exports clean, high-level Markdown summaries suitable for direct inclusion in vulnerability management systems or emails to non-technical stakeholders.
 - [ ] Differential Scan Aggregation: Build a historical metrics comparison engine that checks the results of a new scan against a past report to highlight fixed or newly introduced exposures.
