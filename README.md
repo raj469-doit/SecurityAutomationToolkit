@@ -137,5 +137,11 @@ The Security Automation Toolkit is actively developed under a phased release cyc
 - [ ] Containerized Security Runners: Package the entire application suite into a minimal, hardened Docker image to eliminate host-level runner environment drifting and minimize the toolkit's attack surface.
 - [ ] Concurrent Targeted Orchestration: Refactor the core engine's request loops to support async/multithreaded parsing, allowing operators to safely run parallel audits across multiple internal network environments simultaneously.
 
+## Related Projects
+
+This toolkit is part of a broader security portfolio. See also:
+
+- **[LLM Security Lab](https://github.com/raj469-doit/llm-security-lab)** — OWASP Top 10 for LLM Applications: prompt injection, system prompt leakage, sensitive information disclosure, and improper output handling. Built with the same Python automation stack (Pytest, GitHub Actions).
+
 ## Disclaimer
 This tool is intended for authorized security assessments and quality assurance validation tracking only. Scanning targets without explicit, written boundary permissions from the infrastructure owners is strictly prohibited.
