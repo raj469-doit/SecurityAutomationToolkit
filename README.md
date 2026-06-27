@@ -1,7 +1,6 @@
 # Security Automation Toolkit
 
-[![Core Framework Test Suite](https://github.com/raj469-doit/SecurityAutomationToolkit/actions/workflows/test-suite.yml/badge.svg)](https://github.com/raj469-doit/SecurityAutomationToolkit/actions/workflows/test-suite.yml)
-[![Live Security Infrastructure Scan](https://github.com/raj469-doit/SecurityAutomationToolkit/actions/workflows/security-scan.yml/badge.svg)](https://github.com/raj469-doit/SecurityAutomationToolkit/actions/workflows/security-scan.yml)
+[![CI](https://github.com/raj469-doit/SecurityAutomationToolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/raj469-doit/SecurityAutomationToolkit/actions/workflows/ci.yml)
 
 A production-grade, Python-based security assessment framework designed to automate deterministic, OWASP-aligned website security validation. Built on the core principle of the **Triad of Integrity**—unifying rigorous Troubleshooting, Automated Quality Assurance, and Cybersecurity best practices.
 
