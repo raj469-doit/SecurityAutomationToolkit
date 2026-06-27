@@ -1,0 +1,31 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Test outputs
+junit/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Scanner outputs (generated at runtime — don't commit)
+outputs/
+reports/
+*.json
+
+# Keep the config example, ignore real configs with secrets
+config/config.yaml
+.env
+.env.*
+
+# OS noise
+.DS_Store
+Thumbs.db

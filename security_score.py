@@ -1,9 +1,8 @@
 """
-Security Automation Toolkit - CLI Scanner Execution Engine with Dynamic Scoring.
+Security Automation Toolkit - CLI scanner and scoring engine.
 
-This module orchestrates deterministic, OWASP-aligned security posture evaluations
-against website targets, incorporating a dynamic risk deduction weight matrix.
-Integrates with ComplianceReporter to auto-generate Phase 3 visual HTML and Markdown briefs.
+Scans a website for common security issues (missing headers, cookie flags,
+HTTPS), scores the result, and writes HTML + Markdown reports.
 """
 
 import os
@@ -15,10 +14,9 @@ import requests
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 
-# Import the reporting components natively from your updated reporting module
 from generate_report import ComplianceReporter
 
-# Initialize production-grade logging format for structural pipeline monitoring
+# Set up logging to stdout
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -29,56 +27,60 @@ logger = logging.getLogger("SecurityToolkit.Engine")
 
 class SecurityScanner:
     """
-    A robust web security scanner engine featuring header checks, transport 
-    layer analysis, and an automated risk scoring calculation matrix.
+    Scans a website for security issues: headers, cookies, HTTPS, and forms.
+    Calculates a 0–100 score and letter grade based on what's missing.
     """
 
     def __init__(self, timeout=10, user_agent="SecurityAutomationToolkit/1.0"):
-        """
-        Initializes the scanner session attributes.
-        """
+        """Set up the HTTP session."""
         self.timeout = timeout
         self.headers = {"User-Agent": user_agent}
 
     def calculate_risk_posture(self, findings: dict) -> dict:
         """
-        Processes findings through a deductive risk matrix to calculate
-        the baseline security score, grade, and classification level.
+        Deduct points for each issue found and assign a grade and risk level.
+        Returns the updated findings dict.
         """
         score = 100
 
-        # 1. Deduct for non-TLS/HTTPS channel deployment (OWASP A04:2021)
+        # Deduct for missing HTTPS (OWASP A04:2021)
         if not findings["tls_secured"]:
             score -= 25
-            logger.warning("Deducting 25 points: Channel lacks secure TLS/HTTPS encapsulation.")
+            logger.warning("Deducting 25 points: site does not use HTTPS.")
 
-        # 2. Deduct for missing high-impact security headers (OWASP A05:2021)
+        # Deduct for missing security headers (OWASP A05:2021)
         high_risk_headers = ["Strict-Transport-Security", "Content-Security-Policy"]
         medium_risk_headers = ["X-Frame-Options", "X-Content-Type-Options"]
 
         for header in findings["missing_headers"]:
             if header in high_risk_headers:
                 score -= 15
-                logger.warning(f"Deducting 15 points: Missing high-risk header '{header}'.")
+                logger.warning(f"Deducting 15 points: missing high-risk header '{header}'.")
             elif header in medium_risk_headers:
                 score -= 10
-                logger.warning(f"Deducting 10 points: Missing medium-risk header '{header}'.")
+                logger.warning(f"Deducting 10 points: missing medium-risk header '{header}'.")
 
-        # 3. Deduct for high-priority cookie parameter failures
+        # Deduct for cookie flag violations
         for violation in findings["cookie_violations"]:
             for issue in violation["issues"]:
                 if "Secure" in issue:
                     score -= 20
-                    logger.warning(f"Deducting 20 points: Cookie '{violation['cookie_name']}' missing Secure flag.")
+                    logger.warning(
+                        f"Deducting 20 points: cookie '{violation['cookie_name']}' "
+                        f"is missing the Secure flag."
+                    )
                 elif "HttpOnly" in issue:
                     score -= 10
-                    logger.warning(f"Deducting 10 points: Cookie '{violation['cookie_name']}' missing HttpOnly flag.")
+                    logger.warning(
+                        f"Deducting 10 points: cookie '{violation['cookie_name']}' "
+                        f"is missing the HttpOnly flag."
+                    )
 
-        # Enforce mathematical boundaries between 0 and 100
+        # Clamp to 0–100
         score = max(0, min(100, score))
         findings["security_score"] = score
 
-        # 4. Map the numeric score to an enterprise-grade classification scale
+        # Assign grade and risk level
         if score >= 90:
             findings["grade"] = "A"
             findings["risk_level"] = "LOW"
@@ -95,15 +97,19 @@ class SecurityScanner:
             findings["grade"] = "F"
             findings["risk_level"] = "CRITICAL"
 
-        logger.info(f"Final calculated security metrics posture: Score={score}, Grade={findings['grade']}, Risk={findings['risk_level']}")
+        logger.info(
+            f"Score: {score}, Grade: {findings['grade']}, "
+            f"Risk: {findings['risk_level']}"
+        )
         return findings
 
     def scan_endpoint(self, url: str) -> dict:
         """
-        Orchestrates security posture evaluation on a single URL target.
+        Scan a single URL and return a findings dict.
+        On network errors, returns a score of 0 / grade F.
         """
-        logger.info(f"Initiating security scanning profile for: {url}")
-        
+        logger.info(f"Scanning: {url}")
+
         findings = {
             "target_url": url,
             "tls_secured": False,
@@ -121,37 +127,48 @@ class SecurityScanner:
             findings["tls_secured"] = True
 
         try:
-            response = requests.get(url, headers=self.headers, timeout=self.timeout, allow_redirects=True)
-            
+            response = requests.get(
+                url, headers=self.headers,
+                timeout=self.timeout,
+                allow_redirects=True
+            )
+
+            # Check for required security headers
             required_headers = [
-                "Strict-Transport-Security", 
-                "Content-Security-Policy", 
-                "X-Frame-Options", 
-                "X-Content-Type-Options"
+                "Strict-Transport-Security",
+                "Content-Security-Policy",
+                "X-Frame-Options",
+                "X-Content-Type-Options",
             ]
             for header in required_headers:
                 if header not in response.headers:
                     findings["missing_headers"].append(header)
 
+            # Check cookie flags
             for cookie in response.cookies:
                 issues = []
                 if not cookie.secure:
-                    issues.append("Missing 'Secure' directive")
-                
-                # Natively check for HttpOnly using standard cookiejar API boundaries
-                is_httponly = cookie.has_nonstandard_attr('HttpOnly') or cookie.has_nonstandard_attr('httponly')
+                    issues.append("Missing 'Secure' flag")
+                is_httponly = (
+                    cookie.has_nonstandard_attr('HttpOnly')
+                    or cookie.has_nonstandard_attr('httponly')
+                )
                 if not is_httponly:
-                    issues.append("Missing 'HttpOnly' directive")
-                
+                    issues.append("Missing 'HttpOnly' flag")
                 if issues:
                     findings["cookie_violations"].append({
                         "cookie_name": cookie.name,
                         "issues": issues
                     })
 
+            # Discover forms on the page
             soup = BeautifulSoup(response.text, 'html.parser')
             for index, form in enumerate(soup.find_all('form')):
-                inputs = [inp.get('name') for inp in form.find_all(['input', 'textarea']) if inp.get('name')]
+                inputs = [
+                    inp.get('name')
+                    for inp in form.find_all(['input', 'textarea'])
+                    if inp.get('name')
+                ]
                 findings["discovered_forms"].append({
                     "form_index": index,
                     "action": form.get('action', ''),
@@ -160,15 +177,16 @@ class SecurityScanner:
                 })
 
         except requests.exceptions.Timeout:
-            logger.error(f"Scan timed out for destination: {url}")
-            findings["errors"].append("Network timeout error occurred")
+            logger.error(f"Request timed out for: {url}")
+            findings["errors"].append("Request timed out")
             findings["security_score"] = 0
             findings["grade"] = "F"
             findings["risk_level"] = "CRITICAL"
             return findings
+
         except requests.exceptions.RequestException as e:
-            logger.error(f"Network transport level anomaly on {url}: {str(e)}")
-            findings["errors"].append(f"Connection failure: {type(e).__name__}")
+            logger.error(f"Network error on {url}: {str(e)}")
+            findings["errors"].append(f"Connection failed: {type(e).__name__}")
             findings["security_score"] = 0
             findings["grade"] = "F"
             findings["risk_level"] = "CRITICAL"
@@ -177,10 +195,10 @@ class SecurityScanner:
         return self.calculate_risk_posture(findings)
 
 
-def _map_telemetry_to_vulnerabilities(scan_results: dict) -> dict:
+def _map_findings_to_vulnerabilities(scan_results: dict) -> dict:
     """
-    Transforms raw telemetry findings map into the normalized structural dictionary contract 
-    expected natively by the ComplianceReporter engine core.
+    Convert raw scan findings into the vulnerability format expected by
+    ComplianceReporter.
     """
     vulnerabilities = []
 
@@ -188,8 +206,8 @@ def _map_telemetry_to_vulnerabilities(scan_results: dict) -> dict:
         vulnerabilities.append({
             "owasp_category": "A04:2021-Cryptographic Failures",
             "severity": "High",
-            "description": f"Unencrypted communication channel deployed over plaintext protocol scheme.",
-            "remediation": "Enforce sitewide permanent HSTS redirection protocols and bind application to TLS 1.3 endpoints."
+            "description": "Site is served over plain HTTP instead of HTTPS.",
+            "remediation": "Redirect all traffic to HTTPS and enable HSTS."
         })
 
     high_risk_headers = ["Strict-Transport-Security", "Content-Security-Policy"]
@@ -198,8 +216,8 @@ def _map_telemetry_to_vulnerabilities(scan_results: dict) -> dict:
         vulnerabilities.append({
             "owasp_category": "A05:2021-Security Misconfiguration",
             "severity": severity,
-            "description": f"Missing HTTP security architecture directive header configuration: '{header}'.",
-            "remediation": f"Configure backend routing engine server blocks to inject explicit parameter declarations for '{header}'."
+            "description": f"Missing security header: '{header}'.",
+            "remediation": f"Configure your server to send the '{header}' header."
         })
 
     for cv in scan_results["cookie_violations"]:
@@ -208,8 +226,12 @@ def _map_telemetry_to_vulnerabilities(scan_results: dict) -> dict:
             vulnerabilities.append({
                 "owasp_category": "A05:2021-Security Misconfiguration",
                 "severity": severity,
-                "description": f"Session identity token element cookie '{cv['cookie_name']}' dropped with '{issue}'.",
-                "remediation": f"Audit middleware interceptor logic state to bind appropriate security directives natively onto application runtime contexts."
+                "description": (
+                    f"Cookie '{cv['cookie_name']}' is set without {issue.replace('Missing ', '')}."
+                ),
+                "remediation": (
+                    f"Set the {issue.replace('Missing ', '')} on cookie '{cv['cookie_name']}'."
+                )
             })
 
     return {
@@ -221,13 +243,12 @@ def _map_telemetry_to_vulnerabilities(scan_results: dict) -> dict:
 
 def _get_domain_filename(url: str) -> str:
     """
-    Extracts and sanitizes the hostname from a URL to create a unique,
-    domain-scoped filename for tracking historical baselines.
+    Build a filename for the JSON baseline from the target domain,
+    e.g. 'latest_scan_example_com.json'.
     """
     try:
         parsed = urlparse(url)
         hostname = parsed.hostname or parsed.path
-        # Sanitize string: remove common prefixes and replace dots/special chars with underscores
         clean_name = hostname.replace("www.", "").replace(".", "_").replace(":", "_")
         return f"latest_scan_{clean_name}.json"
     except Exception:
@@ -235,75 +256,73 @@ def _get_domain_filename(url: str) -> str:
 
 
 def main():
-    """
-    Entry point for execution loops. Controls execution metrics collection, 
-    historical baseline differential processing, and Phase 3 asset dumps.
-    """
-    parser = argparse.ArgumentParser(description="Automated Website Security Audit Engine")
-    parser.add_argument("--url", required=True, help="Target URL to assess")
-    parser.add_argument("--output-dir", required=False, default="outputs", help="Directory target location for reporting asset generation")
+    """Run a scan against a URL and save HTML + Markdown reports."""
+    parser = argparse.ArgumentParser(description="Website security scanner")
+    parser.add_argument("--url", required=True, help="URL to scan")
+    parser.add_argument(
+        "--output-dir", default="outputs",
+        help="Directory for report files (default: outputs/)"
+    )
     args = parser.parse_args()
 
-    # Create target pipeline directories up front
     os.makedirs(args.output_dir, exist_ok=True)
-    
-    # NEW: Dynamically resolve the tracking file based strictly on the target domain
-    domain_scoped_filename = _get_domain_filename(args.url)
-    raw_json_baseline_path = os.path.join(args.output_dir, domain_scoped_filename)
-    
-    # Generic user-facing dashboard paths (overwritten per run for easy viewing)
-    html_dashboard_path = os.path.join(args.output_dir, "security_dashboard.html")
-    markdown_brief_path = os.path.join(args.output_dir, "executive_brief.md")
 
-    # Run the core scanning operations loop
+    # Per-domain baseline so different targets don't overwrite each other
+    baseline_filename = _get_domain_filename(args.url)
+    baseline_path = os.path.join(args.output_dir, baseline_filename)
+    html_path = os.path.join(args.output_dir, "security_dashboard.html")
+    markdown_path = os.path.join(args.output_dir, "executive_brief.md")
+
+    # Run the scan
     scanner = SecurityScanner()
     scan_results = scanner.scan_endpoint(args.url)
-    
-    print(f"\n--- SCAN EXECUTION SUMMARY FOR {scan_results['target_url']} ---")
-    print(f"Calculated Score: {scan_results['security_score']} ({scan_results['grade']}) - {scan_results['risk_level']} RISK")
-    print(f"Missing Headers: {scan_results['missing_headers']}")
-    print(f"Cookie Flags Violations: {scan_results['cookie_violations']}")
-    print(f"Forms Discovered: {len(scan_results['discovered_forms'])}")
 
-    # 1. Structural schema adaptation translation step
-    current_report_payload = _map_telemetry_to_vulnerabilities(scan_results)
+    print(f"\n--- SCAN RESULTS: {scan_results['target_url']} ---")
+    print(
+        f"Score: {scan_results['security_score']} "
+        f"({scan_results['grade']}) — {scan_results['risk_level']} RISK"
+    )
+    print(f"Missing headers: {scan_results['missing_headers']}")
+    print(f"Cookie violations: {scan_results['cookie_violations']}")
+    print(f"Forms found: {len(scan_results['discovered_forms'])}")
 
-    # 2. Extract historical tracking metrics state cache if verified
-    historical_baseline_payload = None
-    if os.path.exists(raw_json_baseline_path):
+    # Convert to the reporter's format
+    current_report = _map_findings_to_vulnerabilities(scan_results)
+
+    # Load the previous baseline if one exists
+    previous_baseline = None
+    if os.path.exists(baseline_path):
         try:
-            with open(raw_json_baseline_path, "r", encoding="utf-8") as f:
-                historical_baseline_payload = json.load(f)
-            logger.info(f"Historical baseline found for this specific domain ({domain_scoped_filename}). Evaluating deltas...")
+            with open(baseline_path, "r", encoding="utf-8") as f:
+                previous_baseline = json.load(f)
+            logger.info(f"Loaded previous baseline: {baseline_filename}")
         except Exception as e:
-            logger.error(f"Historical state mapping ingestion failure anomaly: {str(e)}")
+            logger.error(f"Could not read baseline file: {str(e)}")
     else:
-        logger.info(f"No previous baseline found for this specific domain. Treating as a baseline anchor scan.")
+        logger.info("No previous baseline found — this run becomes the baseline.")
 
-    # 3. Instantiate reporting pipeline engine core interface
-    reporter = ComplianceReporter(findings=current_report_payload, baseline=historical_baseline_payload)
+    # Generate reports
+    reporter = ComplianceReporter(findings=current_report, baseline=previous_baseline)
 
-    # 4. Generate Interactive Visualization Dashboard Block
-    logger.info("Compiling dynamic standalone HTML5 visualization assets...")
-    reporter.generate_html(output_path=html_dashboard_path)
+    logger.info("Generating HTML report...")
+    reporter.generate_html(output_path=html_path)
 
-    # 5. Generate Standalone Executive Brief Markdown Summaries
-    logger.info("Compiling high-level Markdown executive documentation brief...")
-    markdown_document_string = reporter.generate_markdown_summary()
+    logger.info("Generating Markdown summary...")
+    md_content = reporter.generate_markdown_summary()
     try:
-        with open(markdown_brief_path, "w", encoding="utf-8") as f:
-            f.write(markdown_document_string)
-        logger.info(f"Executive Markdown brief successfully saved to pathway: {markdown_brief_path}")
+        with open(markdown_path, "w", encoding="utf-8") as f:
+            f.write(md_content)
+        logger.info(f"Markdown report saved: {markdown_path}")
     except IOError as e:
-        logger.error(f"Failed to commit Markdown compliance brief out to disk stream interface: {str(e)}")
+        logger.error(f"Could not write Markdown report: {str(e)}")
 
-    # 6. Cycle state signatures so current runs become next execution baseline anchors
+    # Save current results as the new baseline
     try:
-        with open(raw_json_baseline_path, "w", encoding="utf-8") as f:
-            json.dump(current_report_payload, f, indent=4)
-        logger.info(f"Scan signatures updated successfully. Saved historical state tracking reference anchor: {raw_json_baseline_path}")
+        with open(baseline_path, "w", encoding="utf-8") as f:
+            json.dump(current_report, f, indent=4)
+        logger.info(f"Baseline updated: {baseline_path}")
     except IOError as e:
-        logger.error(f"Failed to cache persistent scanning transaction telemetry onto disk boundaries: {str(e)}")
+        logger.error(f"Could not save baseline: {str(e)}")
 
 
 if __name__ == "__main__":
