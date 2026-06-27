@@ -20,6 +20,14 @@ severity_weights:
   X-Frame-Options: 10
   X-Content-Type-Options: 10
 
+  # Per missing header (low-risk, OWASP recommended)
+  Referrer-Policy: 5
+  Permissions-Policy: 5
+  X-Permitted-Cross-Domain-Policies: 5
+
   # Per insecure cookie flag
   cookie_missing_secure: 20
   cookie_missing_httponly: 10
+
+  # Server version disclosure (OWASP A06)
+  server_version_disclosure: 10

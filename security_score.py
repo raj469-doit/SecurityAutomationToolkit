@@ -2,16 +2,18 @@
 Security Automation Toolkit - CLI scanner and scoring engine.
 
 Scans a website for common security issues (missing headers, cookie flags,
-HTTPS), scores the result, and writes HTML + Markdown reports.
+HTTPS, robots.txt, server version disclosure), scores the result, and
+writes HTML + Markdown reports.
 """
 
 import argparse
 import json
 import logging
 import os
+import re
 import sys
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 import yaml
@@ -35,9 +37,16 @@ DEFAULT_WEIGHTS: Dict[str, int] = {
     "Content-Security-Policy": 15,
     "X-Frame-Options": 10,
     "X-Content-Type-Options": 10,
+    "Referrer-Policy": 5,
+    "Permissions-Policy": 5,
+    "X-Permitted-Cross-Domain-Policies": 5,
     "cookie_missing_secure": 20,
     "cookie_missing_httponly": 10,
+    "server_version_disclosure": 10,
 }
+
+# Regex for version numbers like Apache/2.4.41 or PHP/8.1.2
+_VERSION_RE = re.compile(r"/\d+[\d.]*")
 
 
 def load_config(
@@ -65,12 +74,16 @@ def load_config(
         with open(config_path, "r", encoding="utf-8") as f:
             user_cfg = yaml.safe_load(f) or {}
     except Exception as e:
-        logger.warning(f"Could not read config file: {e}. Using defaults.")
+        logger.warning(
+            f"Could not read config file: {e}. Using defaults."
+        )
         return defaults
 
     # Merge user values over defaults
     if "scan_settings" in user_cfg:
-        defaults["scan_settings"].update(user_cfg["scan_settings"])
+        defaults["scan_settings"].update(
+            user_cfg["scan_settings"]
+        )
     if "severity_weights" in user_cfg:
         defaults["severity_weights"].update(
             user_cfg["severity_weights"]
@@ -82,7 +95,8 @@ def load_config(
 class SecurityScanner:
     """
     Scans a website for security issues: headers, cookies, HTTPS,
-    and forms.  Calculates a 0-100 score and letter grade.
+    forms, robots.txt, and server version disclosure.
+    Calculates a 0-100 score and letter grade.
     """
 
     def __init__(
@@ -94,7 +108,73 @@ class SecurityScanner:
         """Set up the HTTP session and scoring weights."""
         self.timeout = timeout
         self.headers: Dict[str, str] = {"User-Agent": user_agent}
-        self.weights: Dict[str, int] = weights or dict(DEFAULT_WEIGHTS)
+        self.weights: Dict[str, int] = (
+            weights or dict(DEFAULT_WEIGHTS)
+        )
+
+    # ── robots.txt parsing (3.2) ──────────────────────────
+
+    def parse_robots(self, url: str) -> Dict[str, Any]:
+        """
+        Fetch /robots.txt from the target and extract Disallow
+        paths and Sitemap URLs.
+
+        Returns a dict with 'disallow_paths' and 'sitemaps' lists.
+        """
+        result: Dict[str, Any] = {
+            "disallow_paths": [],
+            "sitemaps": [],
+        }
+        robots_url = urljoin(url, "/robots.txt")
+
+        try:
+            resp = requests.get(
+                robots_url,
+                headers=self.headers,
+                timeout=self.timeout,
+            )
+            if resp.status_code != 200:
+                return result
+
+            for line in resp.text.splitlines():
+                stripped = line.strip()
+                lower = stripped.lower()
+                if lower.startswith("disallow:"):
+                    path = stripped.split(":", 1)[1].strip()
+                    if path:
+                        result["disallow_paths"].append(path)
+                elif lower.startswith("sitemap:"):
+                    sitemap = stripped.split(":", 1)[1].strip()
+                    if sitemap:
+                        result["sitemaps"].append(sitemap)
+
+        except requests.exceptions.RequestException as e:
+            logger.warning(
+                f"Could not fetch robots.txt: {e}"
+            )
+
+        return result
+
+    # ── Server version disclosure (3.4) ───────────────────
+
+    def check_server_disclosure(
+        self, response_headers: Any,
+    ) -> List[str]:
+        """
+        Check Server and X-Powered-By headers for version
+        numbers that leak infrastructure details.
+
+        Returns a list of disclosure strings, e.g.
+        ["Server: Apache/2.4.41", "X-Powered-By: PHP/8.1"].
+        """
+        disclosures: List[str] = []
+        for hdr in ("Server", "X-Powered-By"):
+            value = response_headers.get(hdr, "")
+            if value and _VERSION_RE.search(value):
+                disclosures.append(f"{hdr}: {value}")
+        return disclosures
+
+    # ── Scoring ───────────────────────────────────────────
 
     def calculate_risk_posture(
         self, findings: Dict[str, Any],
@@ -137,13 +217,24 @@ class SecurityScanner:
                         f"is missing the Secure flag."
                     )
                 elif "HttpOnly" in issue:
-                    pts = w.get("cookie_missing_httponly", 10)
+                    pts = w.get(
+                        "cookie_missing_httponly", 10
+                    )
                     score -= pts
                     logger.warning(
                         f"Deducting {pts} points: cookie "
                         f"'{violation['cookie_name']}' "
                         f"is missing the HttpOnly flag."
                     )
+
+        # Deduct for server version disclosure (3.4)
+        for disc in findings.get("server_disclosures", []):
+            pts = w.get("server_version_disclosure", 10)
+            score -= pts
+            logger.warning(
+                f"Deducting {pts} points: "
+                f"version disclosure in '{disc}'."
+            )
 
         # Clamp to 0-100
         score = max(0, min(100, score))
@@ -172,6 +263,8 @@ class SecurityScanner:
         )
         return findings
 
+    # ── Main scan ─────────────────────────────────────────
+
     def scan_endpoint(self, url: str) -> Dict[str, Any]:
         """
         Scan a single URL and return a findings dict.
@@ -188,6 +281,8 @@ class SecurityScanner:
             "missing_headers": [],
             "cookie_violations": [],
             "discovered_forms": [],
+            "robots": {"disallow_paths": [], "sitemaps": []},
+            "server_disclosures": [],
             "errors": [],
         }
 
@@ -202,12 +297,15 @@ class SecurityScanner:
                 allow_redirects=True,
             )
 
-            # Check for required security headers
+            # Check for required security headers (3.1)
             required_headers: List[str] = [
                 "Strict-Transport-Security",
                 "Content-Security-Policy",
                 "X-Frame-Options",
                 "X-Content-Type-Options",
+                "Referrer-Policy",
+                "Permissions-Policy",
+                "X-Permitted-Cross-Domain-Policies",
             ]
             for header in required_headers:
                 if header not in response.headers:
@@ -217,7 +315,9 @@ class SecurityScanner:
             for cookie in response.cookies:
                 issues: List[str] = []
                 if not cookie.secure:
-                    issues.append("Missing 'Secure' directive")
+                    issues.append(
+                        "Missing 'Secure' directive"
+                    )
                 is_httponly = (
                     cookie.has_nonstandard_attr('HttpOnly')
                     or cookie.has_nonstandard_attr('httponly')
@@ -233,8 +333,12 @@ class SecurityScanner:
                     })
 
             # Discover forms on the page
-            soup = BeautifulSoup(response.text, 'html.parser')
-            for index, form in enumerate(soup.find_all('form')):
+            soup = BeautifulSoup(
+                response.text, 'html.parser'
+            )
+            for index, form in enumerate(
+                soup.find_all('form')
+            ):
                 inputs: List[str] = [
                     str(inp.get('name'))
                     for inp in form.find_all(
@@ -250,6 +354,11 @@ class SecurityScanner:
                     "method": str(method).lower(),
                     "input_parameters": inputs,
                 })
+
+            # Server version disclosure (3.4)
+            findings["server_disclosures"] = (
+                self.check_server_disclosure(response.headers)
+            )
 
         except requests.exceptions.Timeout:
             logger.error(f"Request timed out for: {url}")
@@ -271,6 +380,9 @@ class SecurityScanner:
             findings["risk_level"] = "CRITICAL"
             return findings
 
+        # Parse robots.txt (3.2)
+        findings["robots"] = self.parse_robots(url)
+
         return self.calculate_risk_posture(findings)
 
 
@@ -285,22 +397,35 @@ def _map_findings_to_vulnerabilities(
 
     if not scan_results["tls_secured"]:
         vulnerabilities.append({
-            "owasp_category": "A04:2021-Cryptographic Failures",
+            "owasp_category": (
+                "A04:2021-Cryptographic Failures"
+            ),
             "severity": "High",
             "description": (
-                "Site is served over plain HTTP instead of HTTPS."
+                "Site is served over plain HTTP "
+                "instead of HTTPS."
             ),
             "remediation": (
-                "Redirect all traffic to HTTPS and enable HSTS."
+                "Redirect all traffic to HTTPS "
+                "and enable HSTS."
             ),
         })
 
-    high_risk_headers = [
+    high_risk = [
         "Strict-Transport-Security",
         "Content-Security-Policy",
     ]
+    medium_risk = [
+        "X-Frame-Options",
+        "X-Content-Type-Options",
+    ]
     for header in scan_results["missing_headers"]:
-        sev = "High" if header in high_risk_headers else "Medium"
+        if header in high_risk:
+            sev = "High"
+        elif header in medium_risk:
+            sev = "Medium"
+        else:
+            sev = "Low"
         vulnerabilities.append({
             "owasp_category": (
                 "A05:2021-Security Misconfiguration"
@@ -336,6 +461,22 @@ def _map_findings_to_vulnerabilities(
                 ),
             })
 
+    # Server version disclosure (3.4)
+    for disc in scan_results.get("server_disclosures", []):
+        vulnerabilities.append({
+            "owasp_category": (
+                "A06:2021-Vulnerable Components"
+            ),
+            "severity": "Medium",
+            "description": (
+                f"Server version disclosed: {disc}."
+            ),
+            "remediation": (
+                "Remove or suppress version information "
+                "from server response headers."
+            ),
+        })
+
     return {
         "target": scan_results["target_url"],
         "final_score": scan_results["security_score"],
@@ -345,8 +486,8 @@ def _map_findings_to_vulnerabilities(
 
 def _get_domain_filename(url: str) -> str:
     """
-    Build a filename for the JSON baseline from the target domain,
-    e.g. 'latest_scan_example_com.json'.
+    Build a filename for the JSON baseline from the target
+    domain, e.g. 'latest_scan_example_com.json'.
     """
     try:
         parsed = urlparse(url)
@@ -401,7 +542,8 @@ def main() -> None:
     scanner = SecurityScanner(
         timeout=settings.get("default_timeout", 10),
         user_agent=settings.get(
-            "user_agent", "SecurityAutomationToolkit/1.0"
+            "user_agent",
+            "SecurityAutomationToolkit/1.0",
         ),
         weights=weights,
     )
@@ -417,16 +559,28 @@ def main() -> None:
         f"- {scan_results['risk_level']} RISK"
     )
     print(
-        f"Missing headers: {scan_results['missing_headers']}"
+        "Missing headers: "
+        f"{scan_results['missing_headers']}"
     )
     print(
-        f"Cookie violations: "
+        "Cookie violations: "
         f"{scan_results['cookie_violations']}"
     )
     print(
-        f"Forms found: "
+        "Forms found: "
         f"{len(scan_results['discovered_forms'])}"
     )
+    robots = scan_results.get("robots", {})
+    if robots.get("disallow_paths"):
+        print(
+            "robots.txt Disallow paths: "
+            f"{robots['disallow_paths']}"
+        )
+    disclosures = scan_results.get(
+        "server_disclosures", []
+    )
+    if disclosures:
+        print(f"Server disclosures: {disclosures}")
 
     current_report = _map_findings_to_vulnerabilities(
         scan_results
@@ -441,12 +595,12 @@ def main() -> None:
             ) as f:
                 previous_baseline = json.load(f)
             logger.info(
-                f"Loaded previous baseline: "
+                "Loaded previous baseline: "
                 f"{baseline_filename}"
             )
         except Exception as e:
             logger.error(
-                f"Could not read baseline file: {str(e)}"
+                f"Could not read baseline file: {e}"
             )
     else:
         logger.info(
@@ -475,7 +629,7 @@ def main() -> None:
         )
     except IOError as e:
         logger.error(
-            f"Could not write Markdown report: {str(e)}"
+            f"Could not write Markdown report: {e}"
         )
 
     # Save current results as the new baseline
@@ -486,9 +640,7 @@ def main() -> None:
             json.dump(current_report, f, indent=4)
         logger.info(f"Baseline updated: {baseline_path}")
     except IOError as e:
-        logger.error(
-            f"Could not save baseline: {str(e)}"
-        )
+        logger.error(f"Could not save baseline: {e}")
 
 
 if __name__ == "__main__":
