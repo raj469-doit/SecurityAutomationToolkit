@@ -28,7 +28,7 @@ logger = logging.getLogger("SecurityToolkit.Engine")
 class SecurityScanner:
     """
     Scans a website for security issues: headers, cookies, HTTPS, and forms.
-    Calculates a 0–100 score and letter grade based on what's missing.
+    Calculates a 0-100 score and letter grade based on what is missing.
     """
 
     def __init__(self, timeout=10, user_agent="SecurityAutomationToolkit/1.0"):
@@ -49,16 +49,25 @@ class SecurityScanner:
             logger.warning("Deducting 25 points: site does not use HTTPS.")
 
         # Deduct for missing security headers (OWASP A05:2021)
-        high_risk_headers = ["Strict-Transport-Security", "Content-Security-Policy"]
+        high_risk_headers = [
+            "Strict-Transport-Security",
+            "Content-Security-Policy",
+        ]
         medium_risk_headers = ["X-Frame-Options", "X-Content-Type-Options"]
 
         for header in findings["missing_headers"]:
             if header in high_risk_headers:
                 score -= 15
-                logger.warning(f"Deducting 15 points: missing high-risk header '{header}'.")
+                logger.warning(
+                    f"Deducting 15 points: missing high-risk header "
+                    f"'{header}'."
+                )
             elif header in medium_risk_headers:
                 score -= 10
-                logger.warning(f"Deducting 10 points: missing medium-risk header '{header}'.")
+                logger.warning(
+                    f"Deducting 10 points: missing medium-risk header "
+                    f"'{header}'."
+                )
 
         # Deduct for cookie flag violations
         for violation in findings["cookie_violations"]:
@@ -66,17 +75,19 @@ class SecurityScanner:
                 if "Secure" in issue:
                     score -= 20
                     logger.warning(
-                        f"Deducting 20 points: cookie '{violation['cookie_name']}' "
+                        f"Deducting 20 points: cookie "
+                        f"'{violation['cookie_name']}' "
                         f"is missing the Secure flag."
                     )
                 elif "HttpOnly" in issue:
                     score -= 10
                     logger.warning(
-                        f"Deducting 10 points: cookie '{violation['cookie_name']}' "
+                        f"Deducting 10 points: cookie "
+                        f"'{violation['cookie_name']}' "
                         f"is missing the HttpOnly flag."
                     )
 
-        # Clamp to 0–100
+        # Clamp to 0-100
         score = max(0, min(100, score))
         findings["security_score"] = score
 
@@ -148,13 +159,13 @@ class SecurityScanner:
             for cookie in response.cookies:
                 issues = []
                 if not cookie.secure:
-                    issues.append("Missing 'Secure' flag")
+                    issues.append("Missing 'Secure' directive")
                 is_httponly = (
                     cookie.has_nonstandard_attr('HttpOnly')
                     or cookie.has_nonstandard_attr('httponly')
                 )
                 if not is_httponly:
-                    issues.append("Missing 'HttpOnly' flag")
+                    issues.append("Missing 'HttpOnly' directive")
                 if issues:
                     findings["cookie_violations"].append({
                         "cookie_name": cookie.name,
@@ -197,8 +208,8 @@ class SecurityScanner:
 
 def _map_findings_to_vulnerabilities(scan_results: dict) -> dict:
     """
-    Convert raw scan findings into the vulnerability format expected by
-    ComplianceReporter.
+    Convert raw scan findings into the vulnerability format expected
+    by ComplianceReporter.
     """
     vulnerabilities = []
 
@@ -210,27 +221,34 @@ def _map_findings_to_vulnerabilities(scan_results: dict) -> dict:
             "remediation": "Redirect all traffic to HTTPS and enable HSTS."
         })
 
-    high_risk_headers = ["Strict-Transport-Security", "Content-Security-Policy"]
+    high_risk_headers = [
+        "Strict-Transport-Security",
+        "Content-Security-Policy",
+    ]
     for header in scan_results["missing_headers"]:
         severity = "High" if header in high_risk_headers else "Medium"
         vulnerabilities.append({
             "owasp_category": "A05:2021-Security Misconfiguration",
             "severity": severity,
             "description": f"Missing security header: '{header}'.",
-            "remediation": f"Configure your server to send the '{header}' header."
+            "remediation": (
+                f"Configure your server to send the '{header}' header."
+            )
         })
 
     for cv in scan_results["cookie_violations"]:
         for issue in cv["issues"]:
             severity = "High" if "Secure" in issue else "Medium"
+            flag = issue.replace("Missing '", "").replace("' directive", "")
             vulnerabilities.append({
                 "owasp_category": "A05:2021-Security Misconfiguration",
                 "severity": severity,
                 "description": (
-                    f"Cookie '{cv['cookie_name']}' is set without {issue.replace('Missing ', '')}."
+                    f"Cookie '{cv['cookie_name']}' is missing "
+                    f"the {flag} flag."
                 ),
                 "remediation": (
-                    f"Set the {issue.replace('Missing ', '')} on cookie '{cv['cookie_name']}'."
+                    f"Set the {flag} flag on cookie '{cv['cookie_name']}'."
                 )
             })
 
@@ -249,7 +267,11 @@ def _get_domain_filename(url: str) -> str:
     try:
         parsed = urlparse(url)
         hostname = parsed.hostname or parsed.path
-        clean_name = hostname.replace("www.", "").replace(".", "_").replace(":", "_")
+        clean_name = (
+            hostname.replace("www.", "")
+            .replace(".", "_")
+            .replace(":", "_")
+        )
         return f"latest_scan_{clean_name}.json"
     except Exception:
         return "latest_scan_fallback.json"
@@ -280,13 +302,12 @@ def main():
     print(f"\n--- SCAN RESULTS: {scan_results['target_url']} ---")
     print(
         f"Score: {scan_results['security_score']} "
-        f"({scan_results['grade']}) — {scan_results['risk_level']} RISK"
+        f"({scan_results['grade']}) - {scan_results['risk_level']} RISK"
     )
     print(f"Missing headers: {scan_results['missing_headers']}")
     print(f"Cookie violations: {scan_results['cookie_violations']}")
     print(f"Forms found: {len(scan_results['discovered_forms'])}")
 
-    # Convert to the reporter's format
     current_report = _map_findings_to_vulnerabilities(scan_results)
 
     # Load the previous baseline if one exists
@@ -299,10 +320,14 @@ def main():
         except Exception as e:
             logger.error(f"Could not read baseline file: {str(e)}")
     else:
-        logger.info("No previous baseline found — this run becomes the baseline.")
+        logger.info(
+            "No previous baseline found - this run becomes the baseline."
+        )
 
     # Generate reports
-    reporter = ComplianceReporter(findings=current_report, baseline=previous_baseline)
+    reporter = ComplianceReporter(
+        findings=current_report, baseline=previous_baseline
+    )
 
     logger.info("Generating HTML report...")
     reporter.generate_html(output_path=html_path)

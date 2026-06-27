@@ -13,7 +13,7 @@ import argparse
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger("SecurityToolkit.Reporter")
 
@@ -21,7 +21,7 @@ logger = logging.getLogger("SecurityToolkit.Reporter")
 class ComplianceReporter:
     """
     Builds HTML and Markdown reports from a scan findings dict.
-    Optionally compares against a previous scan to highlight new or fixed issues.
+    Optionally compares against a previous scan to highlight changes.
     """
 
     def __init__(
@@ -40,8 +40,9 @@ class ComplianceReporter:
 
     def _calculate_deltas(self) -> Dict[str, Any]:
         """
-        Compare current findings against the baseline to find new and fixed issues.
-        Returns a dict with 'new', 'fixed', and 'score_delta' keys.
+        Compare current findings against the baseline to find new
+        and fixed issues. Returns a dict with 'new', 'fixed', and
+        'score_delta' keys.
         """
         if not self.baseline:
             return {"new": [], "fixed": [], "score_delta": 0}
@@ -49,8 +50,14 @@ class ComplianceReporter:
         current_vulns = self.findings.get("vulnerabilities", [])
         past_vulns = self.baseline.get("vulnerabilities", [])
 
-        current_map = {v["description"]: v for v in current_vulns if v.get("description")}
-        past_map = {v["description"]: v for v in past_vulns if v.get("description")}
+        current_map = {
+            v["description"]: v
+            for v in current_vulns if v.get("description")
+        }
+        past_map = {
+            v["description"]: v
+            for v in past_vulns if v.get("description")
+        }
 
         new_keys = set(current_map) - set(past_map)
         fixed_keys = set(past_map) - set(current_map)
@@ -80,7 +87,9 @@ class ComplianceReporter:
             severity = vuln.get("severity", "Low")
             metrics[severity] = metrics.get(severity, 0) + 1
             cat = vuln.get("owasp_category", "Uncategorized")
-            metrics["owasp_breakdown"][cat] = metrics["owasp_breakdown"].get(cat, 0) + 1
+            metrics["owasp_breakdown"][cat] = (
+                metrics["owasp_breakdown"].get(cat, 0) + 1
+            )
         return metrics
 
     def generate_markdown_summary(self) -> str:
@@ -114,20 +123,31 @@ class ComplianceReporter:
                 md += "No changes from the previous scan.\n\n"
             else:
                 if self.deltas["new"]:
-                    md += "### 🛑 New Issues\n"
+                    md += "### New Issues\n"
                     for v in self.deltas["new"]:
-                        md += f"- **[{v.get('severity')}]** {v.get('owasp_category')} — {v.get('description')}\n"
+                        md += (
+                            f"- **[{v.get('severity')}]** "
+                            f"{v.get('owasp_category')} "
+                            f"- {v.get('description')}\n"
+                        )
                 if self.deltas["fixed"]:
-                    md += "\n### ✅ Fixed Issues\n"
+                    md += "\n### Fixed Issues\n"
                     for v in self.deltas["fixed"]:
-                        md += f"- **[{v.get('severity')}]** {v.get('owasp_category')} — {v.get('description')}\n"
+                        md += (
+                            f"- **[{v.get('severity')}]** "
+                            f"{v.get('owasp_category')} "
+                            f"- {v.get('description')}\n"
+                        )
                 md += "\n"
 
         md += "## Findings and Remediation\n"
         vulns = self.findings.get("vulnerabilities", [])
         if vulns:
             for i, v in enumerate(vulns, start=1):
-                md += f"{i}. **{v.get('owasp_category')}** [{v.get('severity')}]\n"
+                md += (
+                    f"{i}. **{v.get('owasp_category')}** "
+                    f"[{v.get('severity')}]\n"
+                )
                 md += f"   - **Issue:** {v.get('description')}\n"
                 md += f"   - **Fix:** {v.get('remediation')}\n"
         else:
@@ -148,26 +168,31 @@ class ComplianceReporter:
 
         vuln_rows = ""
         for vuln in self.findings.get("vulnerabilities", []):
-            vuln_rows += f"""
-            <tr>
-              <td><strong>{vuln.get('owasp_category')}</strong></td>
-              <td><span class="badge-{vuln.get('severity', 'Low').lower()}">{vuln.get('severity')}</span></td>
-              <td>{vuln.get('description')}</td>
-              <td>{vuln.get('remediation')}</td>
-            </tr>"""
+            sev = vuln.get('severity', 'Low')
+            vuln_rows += (
+                f"\n            <tr>"
+                f"<td><strong>{vuln.get('owasp_category')}</strong></td>"
+                f"<td><span class=\"badge-{sev.lower()}\">{sev}</span></td>"
+                f"<td>{vuln.get('description')}</td>"
+                f"<td>{vuln.get('remediation')}</td>"
+                f"</tr>"
+            )
 
         delta_section = ""
         if self.baseline:
             sign = "+" if self.deltas["score_delta"] >= 0 else ""
-            delta_section = f"""
-            <div class="delta-card">
-              <h3>Changes Since Last Scan</h3>
-              <p>Score change: <strong>{sign}{self.deltas['score_delta']} points</strong></p>
-              <p>
-                New issues: <span class="text-danger">{len(self.deltas['new'])}</span> &nbsp;|&nbsp;
-                Fixed: <span class="text-success">{len(self.deltas['fixed'])}</span>
-              </p>
-            </div>"""
+            n_new = len(self.deltas["new"])
+            n_fixed = len(self.deltas["fixed"])
+            delta_section = (
+                f'<div class="delta-card">'
+                f"<h3>Changes Since Last Scan</h3>"
+                f"<p>Score change: <strong>"
+                f"{sign}{self.deltas['score_delta']} points</strong></p>"
+                f'<p>New: <span class="text-danger">{n_new}</span>'
+                f' &nbsp;|&nbsp; '
+                f'Fixed: <span class="text-success">{n_fixed}</span></p>'
+                f"</div>"
+            )
 
         score_color = (
             "#10b981" if score >= 80
@@ -175,24 +200,33 @@ class ComplianceReporter:
             else "#ef4444"
         )
 
+        no_issues = (
+            "<tr><td colspan='4' style='text-align:center;"
+            " color:#10b981;'>No issues found.</td></tr>"
+        )
+
         html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Security Report — {target}</title>
+  <title>Security Report - {target}</title>
   <style>
     body {{
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont,
+        "Segoe UI", Roboto, Arial, sans-serif;
       margin: 30px; background: #f8fafc; color: #1e293b;
     }}
     .container {{
       background: white; padding: 30px; border-radius: 12px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.05); max-width: 1100px; margin: 0 auto;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      max-width: 1100px; margin: 0 auto;
     }}
     h1, h2, h3 {{ color: #0f172a; margin-top: 0; }}
     .header-layout {{
-      display: flex; justify-content: space-between; align-items: center;
-      border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 25px;
+      display: flex; justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #e2e8f0;
+      padding-bottom: 20px; margin-bottom: 25px;
     }}
     .score {{ font-size: 32px; font-weight: bold; color: {score_color}; }}
     .chart-container {{
@@ -209,11 +243,26 @@ class ComplianceReporter:
     .text-danger {{ color: #ef4444; font-weight: bold; }}
     .text-success {{ color: #10b981; font-weight: bold; }}
     table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
-    th, td {{ padding: 14px; text-align: left; border-bottom: 1px solid #e2e8f0; }}
+    th, td {{
+      padding: 14px; text-align: left;
+      border-bottom: 1px solid #e2e8f0;
+    }}
     th {{ background: #f8fafc; color: #64748b; font-weight: 600; }}
-    .badge-high   {{ color: white; background: #ef4444; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }}
-    .badge-medium {{ color: white; background: #f59e0b; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }}
-    .badge-low    {{ color: white; background: #3b82f6; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }}
+    .badge-high {{
+      color: white; background: #ef4444;
+      padding: 4px 8px; border-radius: 4px;
+      font-size: 12px; font-weight: bold;
+    }}
+    .badge-medium {{
+      color: white; background: #f59e0b;
+      padding: 4px 8px; border-radius: 4px;
+      font-size: 12px; font-weight: bold;
+    }}
+    .badge-low {{
+      color: white; background: #3b82f6;
+      padding: 4px 8px; border-radius: 4px;
+      font-size: 12px; font-weight: bold;
+    }}
   </style>
 </head>
 <body>
@@ -221,7 +270,9 @@ class ComplianceReporter:
     <div class="header-layout">
       <div>
         <h1>Security Report</h1>
-        <p style="margin:0; color:#64748b;"><strong>Target:</strong> {target}</p>
+        <p style="margin:0; color:#64748b;">
+          <strong>Target:</strong> {target}
+        </p>
       </div>
       <div class="score">{score}/100</div>
     </div>
@@ -246,8 +297,7 @@ class ComplianceReporter:
         </tr>
       </thead>
       <tbody>
-        {vuln_rows if vuln_rows else
-         "<tr><td colspan='4' style='text-align:center; color:#10b981;'>No issues found.</td></tr>"}
+        {vuln_rows if vuln_rows else no_issues}
       </tbody>
     </table>
   </div>
@@ -280,12 +330,24 @@ def main() -> None:
     Run the reporter standalone.
 
     Usage:
-        python generate_report.py --input scan.json --output reports/dashboard.html
+        python generate_report.py \\
+            --input scan.json --output reports/dashboard.html
     """
-    parser = argparse.ArgumentParser(description="Generate a security report from a scan JSON file")
-    parser.add_argument("--input", required=True, help="Path to scan JSON (output of security_score.py)")
-    parser.add_argument("--output", required=True, help="Path for the HTML report file")
-    parser.add_argument("--baseline", help="Path to a previous scan JSON for diff comparison (optional)")
+    parser = argparse.ArgumentParser(
+        description="Generate a security report from a scan JSON file"
+    )
+    parser.add_argument(
+        "--input", required=True,
+        help="Path to scan JSON (output of security_score.py)"
+    )
+    parser.add_argument(
+        "--output", required=True,
+        help="Path for the HTML report file"
+    )
+    parser.add_argument(
+        "--baseline",
+        help="Path to a previous scan JSON for comparison (optional)"
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
