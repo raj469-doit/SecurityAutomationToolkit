@@ -1,4 +1,5 @@
 import pytest
+
 from security_score import SecurityScanner
 
 

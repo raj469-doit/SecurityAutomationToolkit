@@ -1,14 +1,25 @@
 # config.example.yaml
-scan_settings:
-  default_timeout: 12
-  allow_redirects: true
-  max_redirects_limit: 5
+# Copy to config/config.yaml and adjust as needed.
+# All values here match the scanner's built-in defaults.
 
-# Production risk weight management
+scan_settings:
+  default_timeout: 10
+  user_agent: "SecurityAutomationToolkit/1.0"
+  allow_redirects: true
+
+# Point deductions for each finding type.
+# The scanner starts at 100 and subtracts these values.
 severity_weights:
-  Strict-Transport-Security: 20
-  Content-Security-Policy: 25
-  X-Frame-Options: 15
+  no_https: 25
+
+  # Per missing header (high-risk)
+  Strict-Transport-Security: 15
+  Content-Security-Policy: 15
+
+  # Per missing header (medium-risk)
+  X-Frame-Options: 10
   X-Content-Type-Options: 10
-  Secure-Cookie-Flag: 15
-  HttpOnly-Cookie-Flag: 15
+
+  # Per insecure cookie flag
+  cookie_missing_secure: 20
+  cookie_missing_httponly: 10

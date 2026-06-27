@@ -1,0 +1,23 @@
+[project]
+name = "security-automation-toolkit"
+version = "1.0.0"
+description = "OWASP-aligned website security scanner and reporter"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 79
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

@@ -1,134 +1,175 @@
 """
 Security Automation Toolkit - Reporting module tests.
-Tests ComplianceReporter logic without hitting the filesystem or network.
+Tests ComplianceReporter logic without hitting disk or network.
 """
 
-import unittest
+from typing import Any, Dict
 from unittest.mock import mock_open, patch
-import logging
+
+import pytest
 
 from generate_report import ComplianceReporter
 
+# ── Fixtures ──────────────────────────────────────────────
 
-class TestComplianceReporter(unittest.TestCase):
-    """Unit tests for ComplianceReporter."""
 
-    def setUp(self):
-        """Set up shared findings and baseline fixtures."""
-        logging.basicConfig(level=logging.INFO)
+@pytest.fixture
+def findings() -> Dict[str, Any]:
+    """Current scan findings fixture."""
+    return {
+        "target": "https://example.com",
+        "final_score": 85,
+        "vulnerabilities": [
+            {
+                "owasp_category": (
+                    "A05:2021-Security Misconfiguration"
+                ),
+                "severity": "High",
+                "description": (
+                    "Missing Strict-Transport-Security header."
+                ),
+                "remediation": "Configure HSTS on your server.",
+            },
+            {
+                "owasp_category": (
+                    "A02:2021-Cryptographic Failures"
+                ),
+                "severity": "Medium",
+                "description": (
+                    "TLS 1.2 in use; TLS 1.3 preferred."
+                ),
+                "remediation": "Update cipher configuration.",
+            },
+        ],
+    }
 
-        self.mock_findings = {
-            "target": "https://example.com",
-            "final_score": 85,
-            "vulnerabilities": [
-                {
-                    "owasp_category": "A05:2021-Security Misconfiguration",
-                    "severity": "High",
-                    "description": "Missing Strict-Transport-Security header.",
-                    "remediation": "Configure HSTS on your server.",
-                },
-                {
-                    "owasp_category": "A02:2021-Cryptographic Failures",
-                    "severity": "Medium",
-                    "description": "TLS 1.2 in use; TLS 1.3 preferred.",
-                    "remediation": "Update cipher configuration.",
-                },
-            ],
-        }
 
-        self.mock_baseline = {
-            "target": "https://example.com",
-            "final_score": 90,
-            "vulnerabilities": [
-                {
-                    "owasp_category": "A02:2021-Cryptographic Failures",
-                    "severity": "Medium",
-                    "description": "TLS 1.2 in use; TLS 1.3 preferred.",
-                    "remediation": "Update cipher configuration.",
-                },
-                {
-                    "owasp_category": "A01:2021-Broken Access Control",
-                    "severity": "Low",
-                    "description": "Exposed .git metadata directory.",
-                    "remediation": "Remove .git from public web root.",
-                },
-            ],
-        }
+@pytest.fixture
+def baseline() -> Dict[str, Any]:
+    """Previous scan baseline fixture for delta testing."""
+    return {
+        "target": "https://example.com",
+        "final_score": 90,
+        "vulnerabilities": [
+            {
+                "owasp_category": (
+                    "A02:2021-Cryptographic Failures"
+                ),
+                "severity": "Medium",
+                "description": (
+                    "TLS 1.2 in use; TLS 1.3 preferred."
+                ),
+                "remediation": "Update cipher configuration.",
+            },
+            {
+                "owasp_category": (
+                    "A01:2021-Broken Access Control"
+                ),
+                "severity": "Low",
+                "description": (
+                    "Exposed .git metadata directory."
+                ),
+                "remediation": (
+                    "Remove .git from public web root."
+                ),
+            },
+        ],
+    }
 
-        self.reporter = ComplianceReporter(findings=self.mock_findings)
 
-    def test_reporter_initialization_without_baseline(self):
-        """Findings are stored and deltas default to zero without baseline."""
-        self.assertEqual(
-            self.reporter.findings["target"], "https://example.com"
-        )
-        self.assertEqual(self.reporter.deltas["score_delta"], 0)
-        self.assertEqual(len(self.reporter.deltas["new"]), 0)
+# ── Tests ─────────────────────────────────────────────────
 
-    def test_historical_differential_math(self):
-        """Delta logic correctly identifies new and fixed issues."""
-        r = ComplianceReporter(
-            findings=self.mock_findings, baseline=self.mock_baseline
-        )
 
-        # Score dropped 90 → 85
-        self.assertEqual(r.deltas["score_delta"], -5)
-        # HSTS issue is new
-        self.assertEqual(len(r.deltas["new"]), 1)
-        self.assertEqual(r.deltas["new"][0]["severity"], "High")
-        # Broken Access Control was fixed
-        self.assertEqual(len(r.deltas["fixed"]), 1)
-        self.assertEqual(
-            r.deltas["fixed"][0]["owasp_category"],
-            "A01:2021-Broken Access Control",
-        )
+def test_init_without_baseline(
+    findings: Dict[str, Any],
+) -> None:
+    """Findings stored; deltas default to zero without baseline."""
+    r = ComplianceReporter(findings=findings)
 
-    def test_executive_markdown_generation(self):
-        """Markdown output has score, delta, and change section headers."""
-        r = ComplianceReporter(
-            findings=self.mock_findings, baseline=self.mock_baseline
-        )
-        md = r.generate_markdown_summary()
+    assert r.findings["target"] == "https://example.com"
+    assert r.deltas["score_delta"] == 0
+    assert len(r.deltas["new"]) == 0
 
-        self.assertIn("# Security Report:", md)
-        self.assertIn("-5 vs previous scan", md)
-        self.assertIn("New Issues", md)
-        self.assertIn("Fixed Issues", md)
 
-    @patch("os.makedirs")
-    @patch("builtins.open", new_callable=mock_open)
-    def test_html_report_generation_flow(self, mock_file, mock_makedirs):
-        """HTML report is written to the correct path with expected content."""
-        output_path = "outputs/scan_report.html"
-
-        self.reporter.generate_html(output_path=output_path)
-
-        mock_makedirs.assert_called_once_with("outputs", exist_ok=True)
-        mock_file.assert_called_once_with(output_path, "w", encoding="utf-8")
-
-        handle = mock_file()
-        written = "".join(
-            call[0][0] for call in handle.write.call_args_list
-        )
-        self.assertIn("https://example.com", written)
-        self.assertIn("85/100", written)
-        self.assertIn("Security Report", written)
-        self.assertIn("chart-container", written)
-
-    @patch("os.path.exists", return_value=True)
-    @patch(
-        "builtins.open",
-        side_effect=IOError("Permission denied"),
+def test_historical_delta_math(
+    findings: Dict[str, Any],
+    baseline: Dict[str, Any],
+) -> None:
+    """Delta logic identifies new and fixed issues correctly."""
+    r = ComplianceReporter(
+        findings=findings, baseline=baseline
     )
-    def test_report_generation_exception_handling(
-        self, mock_file, mock_exists
-    ):
-        """IO errors during report generation are caught, not raised."""
-        try:
-            self.reporter.generate_html("/protected/report.html")
-        except Exception as e:
-            self.fail(f"generate_html raised an unexpected exception: {e}")
+
+    # Score dropped 90 -> 85
+    assert r.deltas["score_delta"] == -5
+    # HSTS issue is new
+    assert len(r.deltas["new"]) == 1
+    assert r.deltas["new"][0]["severity"] == "High"
+    # Broken Access Control was fixed
+    assert len(r.deltas["fixed"]) == 1
+    assert (
+        r.deltas["fixed"][0]["owasp_category"]
+        == "A01:2021-Broken Access Control"
+    )
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_markdown_generation(
+    findings: Dict[str, Any],
+    baseline: Dict[str, Any],
+) -> None:
+    """Markdown output has score, delta, and change headings."""
+    r = ComplianceReporter(
+        findings=findings, baseline=baseline
+    )
+    md = r.generate_markdown_summary()
+
+    assert "# Security Report:" in md
+    assert "-5 vs previous scan" in md
+    assert "New Issues" in md
+    assert "Fixed Issues" in md
+
+
+@patch("os.makedirs")
+@patch("builtins.open", new_callable=mock_open)
+def test_html_report_generation(
+    mock_file: Any,
+    mock_makedirs: Any,
+    findings: Dict[str, Any],
+) -> None:
+    """HTML report is written with expected content."""
+    output_path = "outputs/scan_report.html"
+    r = ComplianceReporter(findings=findings)
+    r.generate_html(output_path=output_path)
+
+    mock_makedirs.assert_called_once_with(
+        "outputs", exist_ok=True
+    )
+    mock_file.assert_called_once_with(
+        output_path, "w", encoding="utf-8"
+    )
+
+    handle = mock_file()
+    written = "".join(
+        call[0][0]
+        for call in handle.write.call_args_list
+    )
+    assert "https://example.com" in written
+    assert "85/100" in written
+    assert "Security Report" in written
+    assert "chart-container" in written
+
+
+@patch("os.path.exists", return_value=True)
+@patch(
+    "builtins.open",
+    side_effect=IOError("Permission denied"),
+)
+def test_html_report_handles_io_error(
+    mock_file: Any,
+    mock_exists: Any,
+    findings: Dict[str, Any],
+) -> None:
+    """IO errors during report generation are caught."""
+    r = ComplianceReporter(findings=findings)
+    # Should not raise
+    r.generate_html("/protected/report.html")

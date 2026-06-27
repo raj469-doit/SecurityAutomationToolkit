@@ -6,7 +6,6 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    # Weekly run every Monday at 02:00 UTC — catches dependency drift
     - cron: "0 2 * * 1"
   workflow_dispatch:
     inputs:
@@ -16,9 +15,9 @@ on:
         default: ""
 
 jobs:
-  # ── 1. Lint ────────────────────────────────────────────────────────────────
+  # ── 1. Lint ────────────────────────────────────────────────
   lint:
-    name: Lint (flake8)
+    name: Lint (ruff + mypy)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,10 +30,13 @@ jobs:
       - name: Install dev dependencies
         run: pip install -r requirements-dev.txt
 
-      - name: Run flake8
-        run: flake8 .
+      - name: Run ruff
+        run: ruff check .
 
-  # ── 2. Test ────────────────────────────────────────────────────────────────
+      - name: Run mypy
+        run: mypy security_score.py generate_report.py
+
+  # ── 2. Test ────────────────────────────────────────────────
   test:
     name: Unit tests (pytest)
     runs-on: ubuntu-latest
@@ -60,9 +62,7 @@ jobs:
           name: test-results
           path: junit/test-results.xml
 
-  # ── 3. Live scan ───────────────────────────────────────────────────────────
-  # Runs only on manual dispatch (workflow_dispatch) or the weekly schedule.
-  # Not triggered by push/PR so it never blocks a normal code review.
+  # ── 3. Live scan ───────────────────────────────────────────
   scan:
     name: Live security scan
     runs-on: ubuntu-latest
@@ -83,7 +83,6 @@ jobs:
 
       - name: Run security scan
         env:
-          # On manual dispatch use the provided URL; on schedule use the default.
           TARGET_URL: ${{ github.event.inputs.target_url || 'https://example.com' }}
         run: python security_score.py --url "$TARGET_URL" --output-dir outputs/
 

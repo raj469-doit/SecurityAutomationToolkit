@@ -5,13 +5,16 @@ Scans a website for common security issues (missing headers, cookie flags,
 HTTPS), scores the result, and writes HTML + Markdown reports.
 """
 
+import argparse
+import json
+import logging
 import os
 import sys
-import argparse
-import logging
-import json
-import requests
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
+
+import requests
+import yaml
 from bs4 import BeautifulSoup
 
 from generate_report import ComplianceReporter
@@ -24,65 +27,120 @@ logging.basicConfig(
 )
 logger = logging.getLogger("SecurityToolkit.Engine")
 
+# Default severity weights — used when no config file is provided.
+# These match config/config.example.yaml.
+DEFAULT_WEIGHTS: Dict[str, int] = {
+    "no_https": 25,
+    "Strict-Transport-Security": 15,
+    "Content-Security-Policy": 15,
+    "X-Frame-Options": 10,
+    "X-Content-Type-Options": 10,
+    "cookie_missing_secure": 20,
+    "cookie_missing_httponly": 10,
+}
+
+
+def load_config(
+    config_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Load scanner config from a YAML file. Falls back to built-in
+    defaults for any missing keys.
+
+    Returns a dict with 'scan_settings' and 'severity_weights'.
+    """
+    defaults: Dict[str, Any] = {
+        "scan_settings": {
+            "default_timeout": 10,
+            "user_agent": "SecurityAutomationToolkit/1.0",
+            "allow_redirects": True,
+        },
+        "severity_weights": dict(DEFAULT_WEIGHTS),
+    }
+
+    if not config_path or not os.path.exists(config_path):
+        return defaults
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            user_cfg = yaml.safe_load(f) or {}
+    except Exception as e:
+        logger.warning(f"Could not read config file: {e}. Using defaults.")
+        return defaults
+
+    # Merge user values over defaults
+    if "scan_settings" in user_cfg:
+        defaults["scan_settings"].update(user_cfg["scan_settings"])
+    if "severity_weights" in user_cfg:
+        defaults["severity_weights"].update(
+            user_cfg["severity_weights"]
+        )
+
+    return defaults
+
 
 class SecurityScanner:
     """
-    Scans a website for security issues: headers, cookies, HTTPS, and forms.
-    Calculates a 0-100 score and letter grade based on what is missing.
+    Scans a website for security issues: headers, cookies, HTTPS,
+    and forms.  Calculates a 0-100 score and letter grade.
     """
 
-    def __init__(self, timeout=10, user_agent="SecurityAutomationToolkit/1.0"):
-        """Set up the HTTP session."""
+    def __init__(
+        self,
+        timeout: int = 10,
+        user_agent: str = "SecurityAutomationToolkit/1.0",
+        weights: Optional[Dict[str, int]] = None,
+    ) -> None:
+        """Set up the HTTP session and scoring weights."""
         self.timeout = timeout
-        self.headers = {"User-Agent": user_agent}
+        self.headers: Dict[str, str] = {"User-Agent": user_agent}
+        self.weights: Dict[str, int] = weights or dict(DEFAULT_WEIGHTS)
 
-    def calculate_risk_posture(self, findings: dict) -> dict:
+    def calculate_risk_posture(
+        self, findings: Dict[str, Any],
+    ) -> Dict[str, Any]:
         """
-        Deduct points for each issue found and assign a grade and risk level.
-        Returns the updated findings dict.
+        Deduct points for each issue found and assign a grade
+        and risk level.  Returns the updated findings dict.
         """
-        score = 100
+        score: int = 100
+        w = self.weights
 
         # Deduct for missing HTTPS (OWASP A04:2021)
         if not findings["tls_secured"]:
-            score -= 25
-            logger.warning("Deducting 25 points: site does not use HTTPS.")
+            pts = w.get("no_https", 25)
+            score -= pts
+            logger.warning(
+                f"Deducting {pts} points: "
+                f"site does not use HTTPS."
+            )
 
         # Deduct for missing security headers (OWASP A05:2021)
-        high_risk_headers = [
-            "Strict-Transport-Security",
-            "Content-Security-Policy",
-        ]
-        medium_risk_headers = ["X-Frame-Options", "X-Content-Type-Options"]
-
         for header in findings["missing_headers"]:
-            if header in high_risk_headers:
-                score -= 15
+            pts = w.get(header, 0)
+            if pts:
+                score -= pts
                 logger.warning(
-                    f"Deducting 15 points: missing high-risk header "
-                    f"'{header}'."
-                )
-            elif header in medium_risk_headers:
-                score -= 10
-                logger.warning(
-                    f"Deducting 10 points: missing medium-risk header "
-                    f"'{header}'."
+                    f"Deducting {pts} points: "
+                    f"missing header '{header}'."
                 )
 
         # Deduct for cookie flag violations
         for violation in findings["cookie_violations"]:
             for issue in violation["issues"]:
                 if "Secure" in issue:
-                    score -= 20
+                    pts = w.get("cookie_missing_secure", 20)
+                    score -= pts
                     logger.warning(
-                        f"Deducting 20 points: cookie "
+                        f"Deducting {pts} points: cookie "
                         f"'{violation['cookie_name']}' "
                         f"is missing the Secure flag."
                     )
                 elif "HttpOnly" in issue:
-                    score -= 10
+                    pts = w.get("cookie_missing_httponly", 10)
+                    score -= pts
                     logger.warning(
-                        f"Deducting 10 points: cookie "
+                        f"Deducting {pts} points: cookie "
                         f"'{violation['cookie_name']}' "
                         f"is missing the HttpOnly flag."
                     )
@@ -114,14 +172,14 @@ class SecurityScanner:
         )
         return findings
 
-    def scan_endpoint(self, url: str) -> dict:
+    def scan_endpoint(self, url: str) -> Dict[str, Any]:
         """
         Scan a single URL and return a findings dict.
         On network errors, returns a score of 0 / grade F.
         """
         logger.info(f"Scanning: {url}")
 
-        findings = {
+        findings: Dict[str, Any] = {
             "target_url": url,
             "tls_secured": False,
             "security_score": 100,
@@ -130,7 +188,7 @@ class SecurityScanner:
             "missing_headers": [],
             "cookie_violations": [],
             "discovered_forms": [],
-            "errors": []
+            "errors": [],
         }
 
         parsed = urlparse(url)
@@ -141,11 +199,11 @@ class SecurityScanner:
             response = requests.get(
                 url, headers=self.headers,
                 timeout=self.timeout,
-                allow_redirects=True
+                allow_redirects=True,
             )
 
             # Check for required security headers
-            required_headers = [
+            required_headers: List[str] = [
                 "Strict-Transport-Security",
                 "Content-Security-Policy",
                 "X-Frame-Options",
@@ -157,7 +215,7 @@ class SecurityScanner:
 
             # Check cookie flags
             for cookie in response.cookies:
-                issues = []
+                issues: List[str] = []
                 if not cookie.secure:
                     issues.append("Missing 'Secure' directive")
                 is_httponly = (
@@ -165,26 +223,32 @@ class SecurityScanner:
                     or cookie.has_nonstandard_attr('httponly')
                 )
                 if not is_httponly:
-                    issues.append("Missing 'HttpOnly' directive")
+                    issues.append(
+                        "Missing 'HttpOnly' directive"
+                    )
                 if issues:
                     findings["cookie_violations"].append({
                         "cookie_name": cookie.name,
-                        "issues": issues
+                        "issues": issues,
                     })
 
             # Discover forms on the page
             soup = BeautifulSoup(response.text, 'html.parser')
             for index, form in enumerate(soup.find_all('form')):
-                inputs = [
-                    inp.get('name')
-                    for inp in form.find_all(['input', 'textarea'])
+                inputs: List[str] = [
+                    str(inp.get('name'))
+                    for inp in form.find_all(
+                        ['input', 'textarea']
+                    )
                     if inp.get('name')
                 ]
+                action = form.get('action', '') or ''
+                method = form.get('method', 'get') or 'get'
                 findings["discovered_forms"].append({
                     "form_index": index,
-                    "action": form.get('action', ''),
-                    "method": form.get('method', 'get').lower(),
-                    "input_parameters": inputs
+                    "action": str(action),
+                    "method": str(method).lower(),
+                    "input_parameters": inputs,
                 })
 
         except requests.exceptions.Timeout:
@@ -196,8 +260,12 @@ class SecurityScanner:
             return findings
 
         except requests.exceptions.RequestException as e:
-            logger.error(f"Network error on {url}: {str(e)}")
-            findings["errors"].append(f"Connection failed: {type(e).__name__}")
+            logger.error(
+                f"Network error on {url}: {str(e)}"
+            )
+            findings["errors"].append(
+                f"Connection failed: {type(e).__name__}"
+            )
             findings["security_score"] = 0
             findings["grade"] = "F"
             findings["risk_level"] = "CRITICAL"
@@ -206,19 +274,25 @@ class SecurityScanner:
         return self.calculate_risk_posture(findings)
 
 
-def _map_findings_to_vulnerabilities(scan_results: dict) -> dict:
+def _map_findings_to_vulnerabilities(
+    scan_results: Dict[str, Any],
+) -> Dict[str, Any]:
     """
-    Convert raw scan findings into the vulnerability format expected
-    by ComplianceReporter.
+    Convert raw scan findings into the vulnerability format
+    expected by ComplianceReporter.
     """
-    vulnerabilities = []
+    vulnerabilities: List[Dict[str, str]] = []
 
     if not scan_results["tls_secured"]:
         vulnerabilities.append({
             "owasp_category": "A04:2021-Cryptographic Failures",
             "severity": "High",
-            "description": "Site is served over plain HTTP instead of HTTPS.",
-            "remediation": "Redirect all traffic to HTTPS and enable HSTS."
+            "description": (
+                "Site is served over plain HTTP instead of HTTPS."
+            ),
+            "remediation": (
+                "Redirect all traffic to HTTPS and enable HSTS."
+            ),
         })
 
     high_risk_headers = [
@@ -226,36 +300,46 @@ def _map_findings_to_vulnerabilities(scan_results: dict) -> dict:
         "Content-Security-Policy",
     ]
     for header in scan_results["missing_headers"]:
-        severity = "High" if header in high_risk_headers else "Medium"
+        sev = "High" if header in high_risk_headers else "Medium"
         vulnerabilities.append({
-            "owasp_category": "A05:2021-Security Misconfiguration",
-            "severity": severity,
-            "description": f"Missing security header: '{header}'.",
+            "owasp_category": (
+                "A05:2021-Security Misconfiguration"
+            ),
+            "severity": sev,
+            "description": (
+                f"Missing security header: '{header}'."
+            ),
             "remediation": (
-                f"Configure your server to send the '{header}' header."
-            )
+                f"Configure your server to send "
+                f"the '{header}' header."
+            ),
         })
 
     for cv in scan_results["cookie_violations"]:
         for issue in cv["issues"]:
-            severity = "High" if "Secure" in issue else "Medium"
-            flag = issue.replace("Missing '", "").replace("' directive", "")
+            sev = "High" if "Secure" in issue else "Medium"
+            flag = issue.replace(
+                "Missing '", ""
+            ).replace("' directive", "")
             vulnerabilities.append({
-                "owasp_category": "A05:2021-Security Misconfiguration",
-                "severity": severity,
+                "owasp_category": (
+                    "A05:2021-Security Misconfiguration"
+                ),
+                "severity": sev,
                 "description": (
-                    f"Cookie '{cv['cookie_name']}' is missing "
-                    f"the {flag} flag."
+                    f"Cookie '{cv['cookie_name']}' is "
+                    f"missing the {flag} flag."
                 ),
                 "remediation": (
-                    f"Set the {flag} flag on cookie '{cv['cookie_name']}'."
-                )
+                    f"Set the {flag} flag on "
+                    f"cookie '{cv['cookie_name']}'."
+                ),
             })
 
     return {
         "target": scan_results["target_url"],
         "final_score": scan_results["security_score"],
-        "vulnerabilities": vulnerabilities
+        "vulnerabilities": vulnerabilities,
     }
 
 
@@ -277,56 +361,103 @@ def _get_domain_filename(url: str) -> str:
         return "latest_scan_fallback.json"
 
 
-def main():
-    """Run a scan against a URL and save HTML + Markdown reports."""
-    parser = argparse.ArgumentParser(description="Website security scanner")
-    parser.add_argument("--url", required=True, help="URL to scan")
+def main() -> None:
+    """Run a scan against a URL and save reports."""
+    parser = argparse.ArgumentParser(
+        description="Website security scanner"
+    )
+    parser.add_argument(
+        "--url", required=True, help="URL to scan"
+    )
     parser.add_argument(
         "--output-dir", default="outputs",
-        help="Directory for report files (default: outputs/)"
+        help="Directory for report files (default: outputs/)",
+    )
+    parser.add_argument(
+        "--config",
+        help="Path to a YAML config file (optional)",
     )
     args = parser.parse_args()
 
+    # Load config (falls back to defaults if no file given)
+    cfg = load_config(args.config)
+    settings = cfg["scan_settings"]
+    weights = cfg["severity_weights"]
+
     os.makedirs(args.output_dir, exist_ok=True)
 
-    # Per-domain baseline so different targets don't overwrite each other
     baseline_filename = _get_domain_filename(args.url)
-    baseline_path = os.path.join(args.output_dir, baseline_filename)
-    html_path = os.path.join(args.output_dir, "security_dashboard.html")
-    markdown_path = os.path.join(args.output_dir, "executive_brief.md")
+    baseline_path = os.path.join(
+        args.output_dir, baseline_filename
+    )
+    html_path = os.path.join(
+        args.output_dir, "security_dashboard.html"
+    )
+    markdown_path = os.path.join(
+        args.output_dir, "executive_brief.md"
+    )
 
     # Run the scan
-    scanner = SecurityScanner()
+    scanner = SecurityScanner(
+        timeout=settings.get("default_timeout", 10),
+        user_agent=settings.get(
+            "user_agent", "SecurityAutomationToolkit/1.0"
+        ),
+        weights=weights,
+    )
     scan_results = scanner.scan_endpoint(args.url)
 
-    print(f"\n--- SCAN RESULTS: {scan_results['target_url']} ---")
+    print(
+        f"\n--- SCAN RESULTS: "
+        f"{scan_results['target_url']} ---"
+    )
     print(
         f"Score: {scan_results['security_score']} "
-        f"({scan_results['grade']}) - {scan_results['risk_level']} RISK"
+        f"({scan_results['grade']}) "
+        f"- {scan_results['risk_level']} RISK"
     )
-    print(f"Missing headers: {scan_results['missing_headers']}")
-    print(f"Cookie violations: {scan_results['cookie_violations']}")
-    print(f"Forms found: {len(scan_results['discovered_forms'])}")
+    print(
+        f"Missing headers: {scan_results['missing_headers']}"
+    )
+    print(
+        f"Cookie violations: "
+        f"{scan_results['cookie_violations']}"
+    )
+    print(
+        f"Forms found: "
+        f"{len(scan_results['discovered_forms'])}"
+    )
 
-    current_report = _map_findings_to_vulnerabilities(scan_results)
+    current_report = _map_findings_to_vulnerabilities(
+        scan_results
+    )
 
     # Load the previous baseline if one exists
-    previous_baseline = None
+    previous_baseline: Optional[Dict[str, Any]] = None
     if os.path.exists(baseline_path):
         try:
-            with open(baseline_path, "r", encoding="utf-8") as f:
+            with open(
+                baseline_path, "r", encoding="utf-8"
+            ) as f:
                 previous_baseline = json.load(f)
-            logger.info(f"Loaded previous baseline: {baseline_filename}")
+            logger.info(
+                f"Loaded previous baseline: "
+                f"{baseline_filename}"
+            )
         except Exception as e:
-            logger.error(f"Could not read baseline file: {str(e)}")
+            logger.error(
+                f"Could not read baseline file: {str(e)}"
+            )
     else:
         logger.info(
-            "No previous baseline found - this run becomes the baseline."
+            "No previous baseline found "
+            "- this run becomes the baseline."
         )
 
     # Generate reports
     reporter = ComplianceReporter(
-        findings=current_report, baseline=previous_baseline
+        findings=current_report,
+        baseline=previous_baseline,
     )
 
     logger.info("Generating HTML report...")
@@ -335,19 +466,29 @@ def main():
     logger.info("Generating Markdown summary...")
     md_content = reporter.generate_markdown_summary()
     try:
-        with open(markdown_path, "w", encoding="utf-8") as f:
+        with open(
+            markdown_path, "w", encoding="utf-8"
+        ) as f:
             f.write(md_content)
-        logger.info(f"Markdown report saved: {markdown_path}")
+        logger.info(
+            f"Markdown report saved: {markdown_path}"
+        )
     except IOError as e:
-        logger.error(f"Could not write Markdown report: {str(e)}")
+        logger.error(
+            f"Could not write Markdown report: {str(e)}"
+        )
 
     # Save current results as the new baseline
     try:
-        with open(baseline_path, "w", encoding="utf-8") as f:
+        with open(
+            baseline_path, "w", encoding="utf-8"
+        ) as f:
             json.dump(current_report, f, indent=4)
         logger.info(f"Baseline updated: {baseline_path}")
     except IOError as e:
-        logger.error(f"Could not save baseline: {str(e)}")
+        logger.error(
+            f"Could not save baseline: {str(e)}"
+        )
 
 
 if __name__ == "__main__":
