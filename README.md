@@ -11,6 +11,11 @@ The toolkit is built using standard, isolated execution patterns that decouple l
 
 ## Features
 
+- **A01:2021-Broken Access Control Detection**
+  - Sensitive File Exposure Probing (`.env`, `.git/config`, `application.properties`, database backups, and 10+ critical paths)
+  - Admin Panel & API Surface Discovery (`/admin`, `/phpmyadmin`, `/swagger`, `/graphql`, and 6+ common endpoints)
+  - Directory Listing Detection via signature matching across Apache, Nginx, and IIS response patterns
+  - Graduated severity scoring distinguishing direct access (Critical/High) from redirect-inferred existence (Medium/Low)
 - **A05:2021-Security Misconfiguration Auditing**
   - Robust Security Header Validation (HSTS, CSP, X-Frame-Options, etc.)
   - Automated Cookie Flag Verification (`Secure`, `HttpOnly` via standard cookiejar API boundaries)
@@ -46,12 +51,15 @@ SecurityAutomationToolkit/
 │   ├── security_dashboard.html       # Interactive CSS-only visualization dashboard
 │   └── executive_brief.md            # Stakeholder Markdown briefing report
 │
-├── tests/                       # 100% Mocked Integration Checkpoints
+├── tests/                       # 100% Mocked Integration Checkpoints (37 tests)
+│   ├── test_access_control.py   # A01:2021 Broken Access Control validation
 │   ├── test_cookies.py
 │   ├── test_forms.py
-│   ├── test_ssl.py
-│   ├── test_security_score.py
+│   ├── test_headers.py
+│   ├── test_robots.py
 │   ├── test_scoring.py
+│   ├── test_server_disclosure.py
+│   ├── test_ssl.py
 │   └── test_reporting.py        # Validates differential math and asset generation
 │
 ├── security_score.py            # Primary CLI Scanner Engine & Reporting Orchestration
@@ -115,13 +123,13 @@ The repository incorporates two distinct, automated continuous operation profile
 ## Future Roadmap & Capability Maturity Model
 The Security Automation Toolkit is actively developed under a phased release cycle. Development focuses on expanding the framework's assessment depth, refining data analytics/reporting capabilities, and hardening pipeline security.
 
-### Phase 1: Core Foundation & Testing Isolation (100% Completed)
+### Phase 1: Core Foundation & Testing Isolation (100% Complete)
 - [x] OWASP Misconfiguration Audits: Implemented deterministic checks for critical response headers, cross-site scripting guards, and client cookie attributes (Secure, HttpOnly).
 - [x] Transport Layer Defenses: Stabilized connection exception tracking to gracefully evaluate missing, self-signed, or expired SSL/TLS certificates.
 - [x] 100% Mocked Testing Architecture: Decoupled scanning mechanics from verification logic, leveraging unittest.mock to ensure zero out-of-band network traffic during local QA runs.
 - [x] Initial CI/CD Gates: Configured automated GitHub Actions workflows with dual-trigger controls (push/workflow_dispatch), pip dependency caching, and rigid Flake8 syntax validation.
 
-### Phase 2: OWASP Top 10 Alignment & Security Scoring (100% Completed)
+### Phase 2: OWASP Top 10 Alignment & Security Scoring (100% Complete)
 - [x] Targeted Vulnerability Mapping: Map programmatic validation logic directly to OWASP A05:2021-Security Misconfiguration parameters to assess server configuration exposures.
 - [x] Production-Grade Network Defenses: Swapped fragile assumption patterns inside security_score.py for strict request timeouts and graceful error handling, ensuring the app never hangs indefinitely on sluggish or offline targets.
 - [x] Strict Posture Clamping Matrix: Engineer a deterministic mathematical scoring calculation engine that systematically docks weights based on findings, bound strictly by mathematical limits (0-100).
@@ -132,11 +140,18 @@ The Security Automation Toolkit is actively developed under a phased release cyc
 - [x] Executive Summary Generator: Introduce a compilation module that automatically exports clean, high-level Markdown summaries suitable for direct inclusion in vulnerability management systems or emails to non-technical stakeholders.
 - [x] Differential Scan Aggregation: Build a historical metrics comparison engine that checks the results of a new scan against a past report to highlight fixed or newly introduced exposures.
 
-### Phase 4: DevSecOps Hardening & Orchestration (In Progress)
+### Phase 4: OWASP A01:2021 Broken Access Control (100% Complete)
+- [x] Sensitive File Exposure Detection: Probes 13 high-risk paths including `.env`, `.git/config`, `application.properties`, database backups, and framework configuration files.
+- [x] Admin Panel & API Surface Discovery: Scans 9 common admin and API documentation endpoints with redirect-aware detection logic.
+- [x] Directory Listing Detection: Identifies enabled directory listings using signature matching against known server response patterns.
+- [x] Graduated Severity Scoring: Implements access-type-aware point deductions — directly accessible sensitive files cost 25 points while redirect-inferred admin paths cost 5, reflecting real-world risk differentiation.
+- [x] Full Test Coverage: 10 new unit tests covering detection accuracy, severity classification, timeout resilience, and scoring integration. Suite total: 37/37 green.
+
+### Phase 5: DevSecOps Hardening & Orchestration (In Progress)
 - [ ] Strict Secret Vaulting Integration: Standardize target parsing inputs to smoothly ingest access tokens, authentication forms, and target URLs exclusively via secure environment managers (like GitHub Secrets or AWS Secrets Manager).
 - [ ] Containerized Security Runners: Package the entire application suite into a minimal, hardened Docker image to eliminate host-level runner environment drifting and minimize the toolkit's attack surface.
 - [ ] Concurrent Targeted Orchestration: Refactor the core engine's request loops to support async/multithreaded parsing, allowing operators to safely run parallel audits across multiple internal network environments simultaneously.
-
+- [ ] A02:2021-Cryptographic Failures: Expand TLS validation beyond basic HTTPS detection to include cipher suite analysis, certificate chain verification, and protocol version auditing.
 ## Related Projects
 
 This toolkit is part of a broader security portfolio. See also:
