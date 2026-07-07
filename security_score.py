@@ -423,7 +423,6 @@ class SecurityScanner:
                 f"Deducting {pts} points: "
                 f"directory listing at '{item['path']}'."
             )
-        
         # Clamp to 0-100
         score = max(0, min(100, score))
         findings["security_score"] = score
@@ -729,7 +728,6 @@ def _map_findings_to_vulnerabilities(
                 "configuration (e.g., 'Options -Indexes' in Apache)."
             ),
         })
-    
     return {
         "target": scan_results["target_url"],
         "final_score": scan_results["security_score"],
