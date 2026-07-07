@@ -21,6 +21,53 @@ from bs4 import BeautifulSoup
 
 from generate_report import ComplianceReporter
 
+# ── A01:2021 Broken Access Control probe paths ───────────
+
+SENSITIVE_FILES: List[str] = [
+    "/.env",
+    "/.env.local",
+    "/.env.production",
+    "/.git/config",
+    "/config.php",
+    "/config.yml",
+    "/config.json",
+    "/application.properties",
+    "/appsettings.json",
+    "/web.config",
+    "/settings.py",
+    "/backup.sql",
+    "/dump.sql",
+]
+
+ADMIN_PATHS: List[str] = [
+    "/admin",
+    "/administrator",
+    "/wp-admin",
+    "/phpmyadmin",
+    "/dbadmin",
+    "/api/docs",
+    "/swagger",
+    "/graphql",
+    "/phpinfo.php",
+]
+
+DIRECTORY_LISTING_PATHS: List[str] = [
+    "/",
+    "/images/",
+    "/uploads/",
+    "/assets/",
+    "/static/",
+    "/logs/",
+    "/tmp/",
+]
+
+DIRECTORY_LISTING_SIGNATURES: List[str] = [
+    "Index of /",
+    "Directory listing for",
+    "[To Parent Directory]",
+    "<title>Directory",
+]
+
 # Set up logging to stdout
 logging.basicConfig(
     level=logging.INFO,
@@ -43,6 +90,12 @@ DEFAULT_WEIGHTS: Dict[str, int] = {
     "cookie_missing_secure": 20,
     "cookie_missing_httponly": 10,
     "server_version_disclosure": 10,
+    # A01:2021 Broken Access Control
+    "sensitive_file_exposed": 25,
+    "sensitive_file_redirect": 10,
+    "admin_path_exposed": 15,
+    "admin_path_redirect": 5,
+    "directory_listing": 5,
 }
 
 # Regex for version numbers like Apache/2.4.41 or PHP/8.1.2
@@ -176,6 +229,108 @@ class SecurityScanner:
 
     # ── Scoring ───────────────────────────────────────────
 
+    # ── A01:2021 Broken Access Control ────────────────────
+
+    def check_sensitive_files(self, url: str) -> List[Dict[str, Any]]:
+        """
+        Probe for exposed sensitive files that could leak
+        credentials, configuration, or source code.
+        """
+        results: List[Dict[str, Any]] = []
+        for path in SENSITIVE_FILES:
+            probe_url = urljoin(url, path)
+            try:
+                resp = requests.get(
+                    probe_url,
+                    headers=self.headers,
+                    timeout=self.timeout,
+                    allow_redirects=False,
+                )
+                if resp.status_code == 200:
+                    results.append({
+                        "path": path,
+                        "status_code": 200,
+                        "severity": "Critical",
+                        "access_type": "direct",
+                    })
+                elif resp.status_code in (301, 302):
+                    location = resp.headers.get("Location", "unknown")
+                    results.append({
+                        "path": path,
+                        "status_code": resp.status_code,
+                        "severity": "Medium",
+                        "access_type": "redirect",
+                        "redirect_to": location,
+                    })
+            except requests.exceptions.RequestException:
+                continue
+        return results
+
+    def check_admin_paths(self, url: str) -> List[Dict[str, Any]]:
+        """
+        Probe for exposed admin panels and API documentation
+        endpoints that expand the attack surface.
+        """
+        results: List[Dict[str, Any]] = []
+        for path in ADMIN_PATHS:
+            probe_url = urljoin(url, path)
+            try:
+                resp = requests.get(
+                    probe_url,
+                    headers=self.headers,
+                    timeout=self.timeout,
+                    allow_redirects=False,
+                )
+                if resp.status_code == 200:
+                    results.append({
+                        "path": path,
+                        "status_code": 200,
+                        "severity": "High",
+                        "access_type": "direct",
+                    })
+                elif resp.status_code in (301, 302):
+                    location = resp.headers.get("Location", "unknown")
+                    results.append({
+                        "path": path,
+                        "status_code": resp.status_code,
+                        "severity": "Low",
+                        "access_type": "redirect",
+                        "redirect_to": location,
+                    })
+            except requests.exceptions.RequestException:
+                continue
+        return results
+
+    def check_directory_listing(self, url: str) -> List[Dict[str, Any]]:
+        """
+        Check common directories for enabled directory listing,
+        which exposes file structure to attackers.
+        """
+        results: List[Dict[str, Any]] = []
+        for path in DIRECTORY_LISTING_PATHS:
+            probe_url = urljoin(url, path)
+            try:
+                resp = requests.get(
+                    probe_url,
+                    headers=self.headers,
+                    timeout=self.timeout,
+                    allow_redirects=True,
+                )
+                if resp.status_code == 200:
+                    body = resp.text[:2000]  # only check first 2KB
+                    for signature in DIRECTORY_LISTING_SIGNATURES:
+                        if signature.lower() in body.lower():
+                            results.append({
+                                "path": path,
+                                "status_code": 200,
+                                "severity": "Medium",
+                                "signature_matched": signature,
+                            })
+                            break
+            except requests.exceptions.RequestException:
+                continue
+        return results
+
     def calculate_risk_posture(
         self, findings: Dict[str, Any],
     ) -> Dict[str, Any]:
@@ -236,6 +391,39 @@ class SecurityScanner:
                 f"version disclosure in '{disc}'."
             )
 
+        # Deduct for A01:2021 Broken Access Control
+        for item in findings.get("exposed_sensitive_files", []):
+            if item["access_type"] == "direct":
+                pts = w.get("sensitive_file_exposed", 25)
+            else:
+                pts = w.get("sensitive_file_redirect", 10)
+            score -= pts
+            logger.warning(
+                f"Deducting {pts} points: "
+                f"sensitive file '{item['path']}' "
+                f"accessible ({item['access_type']})."
+            )
+
+        for item in findings.get("exposed_admin_paths", []):
+            if item["access_type"] == "direct":
+                pts = w.get("admin_path_exposed", 15)
+            else:
+                pts = w.get("admin_path_redirect", 5)
+            score -= pts
+            logger.warning(
+                f"Deducting {pts} points: "
+                f"admin path '{item['path']}' "
+                f"accessible ({item['access_type']})."
+            )
+
+        for item in findings.get("directory_listings", []):
+            pts = w.get("directory_listing", 5)
+            score -= pts
+            logger.warning(
+                f"Deducting {pts} points: "
+                f"directory listing at '{item['path']}'."
+            )
+        
         # Clamp to 0-100
         score = max(0, min(100, score))
         findings["security_score"] = score
@@ -283,6 +471,9 @@ class SecurityScanner:
             "discovered_forms": [],
             "robots": {"disallow_paths": [], "sitemaps": []},
             "server_disclosures": [],
+            "exposed_sensitive_files": [],    # A01:2021
+            "exposed_admin_paths": [],        # A01:2021
+            "directory_listings": [],         # A01:2021
             "errors": [],
         }
 
@@ -379,6 +570,17 @@ class SecurityScanner:
             findings["grade"] = "F"
             findings["risk_level"] = "CRITICAL"
             return findings
+
+        # A01:2021 Broken Access Control checks
+        findings["exposed_sensitive_files"] = (
+                self.check_sensitive_files(url)
+            )
+        findings["exposed_admin_paths"] = (
+                self.check_admin_paths(url)
+            )
+        findings["directory_listings"] = (
+                self.check_directory_listing(url)
+            )
 
         # Parse robots.txt (3.2)
         findings["robots"] = self.parse_robots(url)
@@ -477,6 +679,57 @@ def _map_findings_to_vulnerabilities(
             ),
         })
 
+    # A01:2021 Broken Access Control
+    for item in scan_results.get("exposed_sensitive_files", []):
+        sev = "Critical" if item["access_type"] == "direct" else "Medium"
+        desc = (
+            f"Sensitive file '{item['path']}' is directly accessible."
+            if item["access_type"] == "direct"
+            else f"Sensitive file '{item['path']}' redirects to "
+                 f"'{item.get('redirect_to', 'unknown')}'."
+        )
+        vulnerabilities.append({
+            "owasp_category": "A01:2021-Broken Access Control",
+            "severity": sev,
+            "description": desc,
+            "remediation": (
+                f"Block public access to '{item['path']}' "
+                f"via server configuration or .htaccess rules."
+            ),
+        })
+
+    for item in scan_results.get("exposed_admin_paths", []):
+        sev = "High" if item["access_type"] == "direct" else "Low"
+        desc = (
+            f"Admin panel '{item['path']}' is publicly accessible."
+            if item["access_type"] == "direct"
+            else f"Admin panel '{item['path']}' exists "
+                 f"(redirects to '{item.get('redirect_to', 'unknown')}')."
+        )
+        vulnerabilities.append({
+            "owasp_category": "A01:2021-Broken Access Control",
+            "severity": sev,
+            "description": desc,
+            "remediation": (
+                f"Restrict access to '{item['path']}' "
+                f"using IP allowlists or VPN requirements."
+            ),
+        })
+
+    for item in scan_results.get("directory_listings", []):
+        vulnerabilities.append({
+            "owasp_category": "A01:2021-Broken Access Control",
+            "severity": "Medium",
+            "description": (
+                f"Directory listing enabled at '{item['path']}' "
+                f"(matched signature: '{item['signature_matched']}')."
+            ),
+            "remediation": (
+                "Disable directory listing in your web server "
+                "configuration (e.g., 'Options -Indexes' in Apache)."
+            ),
+        })
+    
     return {
         "target": scan_results["target_url"],
         "final_score": scan_results["security_score"],
