@@ -123,7 +123,7 @@ def test_markdown_generation(
     )
     md = r.generate_markdown_summary()
 
-    assert "# Security Report:" in md
+    assert "# Security Assessment:" in md
     assert "-5 vs previous scan" in md
     assert "New Issues" in md
     assert "Fixed Issues" in md
@@ -155,7 +155,7 @@ def test_html_report_generation(
     )
     assert "https://example.com" in written
     assert "85/100" in written
-    assert "Security Report" in written
+    assert "Security Assessment" in written
     assert "chart-container" in written
 
 
