@@ -136,9 +136,10 @@ The Security Automation Toolkit is actively developed under a phased release cyc
 - [x] Complete Test Layer Decoupling: Refactor all validation check structures inside tests/ using unit-level mocks so local execution behaves identically to pipeline runners without live outward traffic dependencies.
 
 ### Phase 3: Enterprise Reporting & Executive Dashboards (100% Complete)
-- [x] Dynamic HTML5/CSS Visualizations: Upgrade the HTML reporting engine to compile standalone, interactive dashboards complete with color-coded severity charts (Critical, High, Medium, Low).
-- [x] Executive Summary Generator: Introduce a compilation module that automatically exports clean, high-level Markdown summaries suitable for direct inclusion in vulnerability management systems or emails to non-technical stakeholders.
-- [x] Differential Scan Aggregation: Build a historical metrics comparison engine that checks the results of a new scan against a past report to highlight fixed or newly introduced exposures.
+- [x] Dynamic HTML5/CSS Visualizations: Standalone interactive dashboards with color-coded severity charts (Critical, High, Medium, Low), letter grade display (A–F), OWASP category breakdown table, and severity metrics grid.
+- [x] Executive Summary Generator: Markdown summaries with prioritized remediation checklists, severity icons, tabular metrics, and score trending vs previous scans.
+- [x] Differential Scan Aggregation: Historical comparison engine that flags fixed and newly introduced exposures with itemized delta lists and score change tracking.
+- [x] Remediation Checklist: Priority-ordered interactive checklist with checkboxes in HTML dashboard and numbered severity-ranked action items in Markdown output.
 
 ### Phase 4: OWASP A01:2021 Broken Access Control (100% Complete)
 - [x] Sensitive File Exposure Detection: Probes 13 high-risk paths including `.env`, `.git/config`, `application.properties`, database backups, and framework configuration files.
@@ -156,7 +157,7 @@ The Security Automation Toolkit is actively developed under a phased release cyc
 
 This toolkit is part of a broader security portfolio. See also:
 
-- **[LLM Security Lab](https://github.com/raj469-doit/llm-security-lab)** — OWASP Top 10 for LLM Applications: prompt injection, system prompt leakage, sensitive information disclosure, and improper output handling. Built with the same Python automation stack (Pytest, GitHub Actions).
+- **[LLM Security Lab](https://github.com/raj469-doit/llm-security-lab)** — 83 active test cases covering 5 OWASP LLM Top 10 categories: prompt injection, sensitive information disclosure, improper output handling, excessive agency, and system prompt leakage. Built with the same Python automation stack (Pytest, GitHub Actions).
 
 ## Disclaimer
 This tool is intended for authorized security assessments and quality assurance validation tracking only. Scanning targets without explicit, written boundary permissions from the infrastructure owners is strictly prohibited.
