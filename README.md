@@ -4,6 +4,8 @@
 
 A production-grade, Python-based security assessment framework designed to automate deterministic, OWASP-aligned website security validation. Built on the core principle of the **Triad of Integrity**—unifying rigorous Troubleshooting, Automated Quality Assurance, and Cybersecurity best practices.
 
+🔧 **Want the report format without running the code? Free dashboard + report templates:** [raj469security.gumroad.com](https://raj469security.gumroad.com)
+
 ## Architecture & Production Design
 The toolkit is built using standard, isolated execution patterns that decouple live application scanning from localized test suites:
 * **`security_score.py`**: The dynamic command-line core application. Enforces production-grade network defenses, sanitizes inputs to resolve domain-scoped historical baselines, and executes scans against any authorized target supplied via `--url`.
