@@ -1,4 +1,4 @@
-"""Tests for A01:2021 Broken Access Control checks."""
+"""Tests for A01:2025 Broken Access Control checks."""
 from unittest.mock import MagicMock, patch
 
 import pytest

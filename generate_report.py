@@ -660,7 +660,7 @@ class ComplianceReporter:
           >linkedin.com/in/robert-johnson-sdet</a>
         &nbsp;|&nbsp;
         Mapped to OWASP Top 10 Web Application
-        Security Risks (2021)
+        Security Risks (2025)
       </p>
     </div>
   </div>

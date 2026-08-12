@@ -22,7 +22,7 @@ def findings() -> Dict[str, Any]:
         "vulnerabilities": [
             {
                 "owasp_category": (
-                    "A05:2021-Security Misconfiguration"
+                    "A02:2025-Security Misconfiguration"
                 ),
                 "severity": "High",
                 "description": (
@@ -32,7 +32,7 @@ def findings() -> Dict[str, Any]:
             },
             {
                 "owasp_category": (
-                    "A02:2021-Cryptographic Failures"
+                    "A04:2025-Cryptographic Failures"
                 ),
                 "severity": "Medium",
                 "description": (
@@ -53,7 +53,7 @@ def baseline() -> Dict[str, Any]:
         "vulnerabilities": [
             {
                 "owasp_category": (
-                    "A02:2021-Cryptographic Failures"
+                    "A04:2025-Cryptographic Failures"
                 ),
                 "severity": "Medium",
                 "description": (
@@ -63,7 +63,7 @@ def baseline() -> Dict[str, Any]:
             },
             {
                 "owasp_category": (
-                    "A01:2021-Broken Access Control"
+                    "A01:2025-Broken Access Control"
                 ),
                 "severity": "Low",
                 "description": (
@@ -109,7 +109,7 @@ def test_historical_delta_math(
     assert len(r.deltas["fixed"]) == 1
     assert (
         r.deltas["fixed"][0]["owasp_category"]
-        == "A01:2021-Broken Access Control"
+        == "A01:2025-Broken Access Control"
     )
 
 

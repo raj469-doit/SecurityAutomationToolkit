@@ -21,7 +21,7 @@ from bs4 import BeautifulSoup
 
 from generate_report import ComplianceReporter
 
-# ── A01:2021 Broken Access Control probe paths ───────────
+# ── A01:2025 Broken Access Control probe paths ───────────
 
 SENSITIVE_FILES: List[str] = [
     "/.env",
@@ -90,7 +90,7 @@ DEFAULT_WEIGHTS: Dict[str, int] = {
     "cookie_missing_secure": 20,
     "cookie_missing_httponly": 10,
     "server_version_disclosure": 10,
-    # A01:2021 Broken Access Control
+    # A01:2025 Broken Access Control
     "sensitive_file_exposed": 25,
     "sensitive_file_redirect": 10,
     "admin_path_exposed": 15,
@@ -229,7 +229,7 @@ class SecurityScanner:
 
     # ── Scoring ───────────────────────────────────────────
 
-    # ── A01:2021 Broken Access Control ────────────────────
+    # ── A01:2025 Broken Access Control ────────────────────
 
     def check_sensitive_files(self, url: str) -> List[Dict[str, Any]]:
         """
@@ -341,7 +341,7 @@ class SecurityScanner:
         score: int = 100
         w = self.weights
 
-        # Deduct for missing HTTPS (OWASP A04:2021)
+        # Deduct for missing HTTPS (OWASP A04:2025)
         if not findings["tls_secured"]:
             pts = w.get("no_https", 25)
             score -= pts
@@ -350,7 +350,7 @@ class SecurityScanner:
                 f"site does not use HTTPS."
             )
 
-        # Deduct for missing security headers (OWASP A05:2021)
+        # Deduct for missing security headers (OWASP A02:2025)
         for header in findings["missing_headers"]:
             pts = w.get(header, 0)
             if pts:
@@ -391,7 +391,7 @@ class SecurityScanner:
                 f"version disclosure in '{disc}'."
             )
 
-        # Deduct for A01:2021 Broken Access Control
+        # Deduct for A01:2025 Broken Access Control
         for item in findings.get("exposed_sensitive_files", []):
             if item["access_type"] == "direct":
                 pts = w.get("sensitive_file_exposed", 25)
@@ -470,9 +470,9 @@ class SecurityScanner:
             "discovered_forms": [],
             "robots": {"disallow_paths": [], "sitemaps": []},
             "server_disclosures": [],
-            "exposed_sensitive_files": [],    # A01:2021
-            "exposed_admin_paths": [],        # A01:2021
-            "directory_listings": [],         # A01:2021
+            "exposed_sensitive_files": [],    # A01:2025
+            "exposed_admin_paths": [],        # A01:2025
+            "directory_listings": [],         # A01:2025
             "errors": [],
         }
 
@@ -570,7 +570,7 @@ class SecurityScanner:
             findings["risk_level"] = "CRITICAL"
             return findings
 
-        # A01:2021 Broken Access Control checks
+        # A01:2025 Broken Access Control checks
         findings["exposed_sensitive_files"] = (
                 self.check_sensitive_files(url)
             )
@@ -599,7 +599,7 @@ def _map_findings_to_vulnerabilities(
     if not scan_results["tls_secured"]:
         vulnerabilities.append({
             "owasp_category": (
-                "A04:2021-Cryptographic Failures"
+                "A04:2025-Cryptographic Failures"
             ),
             "severity": "High",
             "description": (
@@ -629,7 +629,7 @@ def _map_findings_to_vulnerabilities(
             sev = "Low"
         vulnerabilities.append({
             "owasp_category": (
-                "A05:2021-Security Misconfiguration"
+                "A02:2025-Security Misconfiguration"
             ),
             "severity": sev,
             "description": (
@@ -649,7 +649,7 @@ def _map_findings_to_vulnerabilities(
             ).replace("' directive", "")
             vulnerabilities.append({
                 "owasp_category": (
-                    "A05:2021-Security Misconfiguration"
+                    "A02:2025-Security Misconfiguration"
                 ),
                 "severity": sev,
                 "description": (
@@ -666,7 +666,7 @@ def _map_findings_to_vulnerabilities(
     for disc in scan_results.get("server_disclosures", []):
         vulnerabilities.append({
             "owasp_category": (
-                "A06:2021-Vulnerable Components"
+                "A03:2025-Software Supply Chain Failures"
             ),
             "severity": "Medium",
             "description": (
@@ -678,7 +678,7 @@ def _map_findings_to_vulnerabilities(
             ),
         })
 
-    # A01:2021 Broken Access Control
+    # A01:2025 Broken Access Control
     for item in scan_results.get("exposed_sensitive_files", []):
         sev = "Critical" if item["access_type"] == "direct" else "Medium"
         desc = (
@@ -688,7 +688,7 @@ def _map_findings_to_vulnerabilities(
                  f"'{item.get('redirect_to', 'unknown')}'."
         )
         vulnerabilities.append({
-            "owasp_category": "A01:2021-Broken Access Control",
+            "owasp_category": "A01:2025-Broken Access Control",
             "severity": sev,
             "description": desc,
             "remediation": (
@@ -706,7 +706,7 @@ def _map_findings_to_vulnerabilities(
                  f"(redirects to '{item.get('redirect_to', 'unknown')}')."
         )
         vulnerabilities.append({
-            "owasp_category": "A01:2021-Broken Access Control",
+            "owasp_category": "A01:2025-Broken Access Control",
             "severity": sev,
             "description": desc,
             "remediation": (
@@ -717,7 +717,7 @@ def _map_findings_to_vulnerabilities(
 
     for item in scan_results.get("directory_listings", []):
         vulnerabilities.append({
-            "owasp_category": "A01:2021-Broken Access Control",
+            "owasp_category": "A01:2025-Broken Access Control",
             "severity": "Medium",
             "description": (
                 f"Directory listing enabled at '{item['path']}' "

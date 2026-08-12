@@ -13,12 +13,12 @@ The toolkit is built using standard, isolated execution patterns that decouple l
 
 ## Features
 
-- **A01:2021-Broken Access Control Detection**
+- **A01:2025-Broken Access Control Detection**
   - Sensitive File Exposure Probing (`.env`, `.git/config`, `application.properties`, database backups, and 10+ critical paths)
   - Admin Panel & API Surface Discovery (`/admin`, `/phpmyadmin`, `/swagger`, `/graphql`, and 6+ common endpoints)
   - Directory Listing Detection via signature matching across Apache, Nginx, and IIS response patterns
   - Graduated severity scoring distinguishing direct access (Critical/High) from redirect-inferred existence (Medium/Low)
-- **A05:2021-Security Misconfiguration Auditing**
+- **A02:2025-Security Misconfiguration Auditing**
   - Robust Security Header Validation (HSTS, CSP, X-Frame-Options, etc.)
   - Automated Cookie Flag Verification (`Secure`, `HttpOnly` via standard cookiejar API boundaries)
 - **Domain-Scoped Differential Analytics**
@@ -54,7 +54,7 @@ SecurityAutomationToolkit/
 │   └── executive_brief.md            # Stakeholder Markdown briefing report
 │
 ├── tests/                       # 100% Mocked Integration Checkpoints (37 tests)
-│   ├── test_access_control.py   # A01:2021 Broken Access Control validation
+│   ├── test_access_control.py   # A01:2025 Broken Access Control validation
 │   ├── test_cookies.py
 │   ├── test_forms.py
 │   ├── test_headers.py
@@ -132,7 +132,7 @@ The Security Automation Toolkit is actively developed under a phased release cyc
 - [x] Initial CI/CD Gates: Configured automated GitHub Actions workflows with dual-trigger controls (push/workflow_dispatch), pip dependency caching, and rigid Flake8 syntax validation.
 
 ### Phase 2: OWASP Top 10 Alignment & Security Scoring (100% Complete)
-- [x] Targeted Vulnerability Mapping: Map programmatic validation logic directly to OWASP A05:2021-Security Misconfiguration parameters to assess server configuration exposures.
+- [x] Targeted Vulnerability Mapping: Map programmatic validation logic directly to OWASP A02:2025-Security Misconfiguration parameters to assess server configuration exposures.
 - [x] Production-Grade Network Defenses: Swapped fragile assumption patterns inside security_score.py for strict request timeouts and graceful error handling, ensuring the app never hangs indefinitely on sluggish or offline targets.
 - [x] Strict Posture Clamping Matrix: Engineer a deterministic mathematical scoring calculation engine that systematically docks weights based on findings, bound strictly by mathematical limits (0-100).
 - [x] Complete Test Layer Decoupling: Refactor all validation check structures inside tests/ using unit-level mocks so local execution behaves identically to pipeline runners without live outward traffic dependencies.
@@ -143,7 +143,7 @@ The Security Automation Toolkit is actively developed under a phased release cyc
 - [x] Differential Scan Aggregation: Historical comparison engine that flags fixed and newly introduced exposures with itemized delta lists and score change tracking.
 - [x] Remediation Checklist: Priority-ordered interactive checklist with checkboxes in HTML dashboard and numbered severity-ranked action items in Markdown output.
 
-### Phase 4: OWASP A01:2021 Broken Access Control (100% Complete)
+### Phase 4: OWASP A01:2025 Broken Access Control (100% Complete)
 - [x] Sensitive File Exposure Detection: Probes 13 high-risk paths including `.env`, `.git/config`, `application.properties`, database backups, and framework configuration files.
 - [x] Admin Panel & API Surface Discovery: Scans 9 common admin and API documentation endpoints with redirect-aware detection logic.
 - [x] Directory Listing Detection: Identifies enabled directory listings using signature matching against known server response patterns.
@@ -154,7 +154,7 @@ The Security Automation Toolkit is actively developed under a phased release cyc
 - [ ] Strict Secret Vaulting Integration: Standardize target parsing inputs to smoothly ingest access tokens, authentication forms, and target URLs exclusively via secure environment managers (like GitHub Secrets or AWS Secrets Manager).
 - [ ] Containerized Security Runners: Package the entire application suite into a minimal, hardened Docker image to eliminate host-level runner environment drifting and minimize the toolkit's attack surface.
 - [ ] Concurrent Targeted Orchestration: Refactor the core engine's request loops to support async/multithreaded parsing, allowing operators to safely run parallel audits across multiple internal network environments simultaneously.
-- [ ] A02:2021-Cryptographic Failures: Expand TLS validation beyond basic HTTPS detection to include cipher suite analysis, certificate chain verification, and protocol version auditing.
+- [ ] A04:2025-Cryptographic Failures: Expand TLS validation beyond basic HTTPS detection to include cipher suite analysis, certificate chain verification, and protocol version auditing.
 ## Related Projects
 
 This toolkit is part of a broader security portfolio. See also:
