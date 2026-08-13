@@ -150,7 +150,17 @@ The Security Automation Toolkit is actively developed under a phased release cyc
 - [x] Graduated Severity Scoring: Implements access-type-aware point deductions — directly accessible sensitive files cost 25 points while redirect-inferred admin paths cost 5, reflecting real-world risk differentiation.
 - [x] Full Test Coverage: 10 new unit tests covering detection accuracy, severity classification, timeout resilience, and scoring integration. Suite total: 37/37 green.
 
-### Phase 5: DevSecOps Hardening & Orchestration (In Progress)
+### Phase 5: OWASP API Security Top 10 (2023) — API Scanner (100% Complete)
+- [x] API Security Scanner Module: Standalone `api_scanner.py` covering 6 of 10 OWASP API Security Top 10 (2023) categories with automated black-box testing.
+- [x] API8:2023 Security Misconfiguration: CORS wildcard and origin reflection detection, sensitive header disclosure (X-Powered-By, X-Debug-Token, etc.), verbose error response analysis, and public API documentation/schema exposure scanning.
+- [x] API2:2023 Broken Authentication: Unauthenticated access testing against common REST data endpoints to detect missing auth requirements.
+- [x] API4:2023 Unrestricted Resource Consumption: Rapid sequential request testing for rate limit enforcement (429 responses and rate-limit headers).
+- [x] API5:2023 Broken Function Level Authorization: Admin, debug, internal, and actuator endpoint exposure detection across 16 common paths.
+- [x] API9:2023 Improper Inventory Management: Multiple active API version detection to identify deprecated endpoints still serving traffic.
+- [x] API1:2023 Broken Object Level Authorization (BOLA): Sequential ID probing across common REST endpoints as a heuristic indicator for authorization bypass.
+- [x] Full Test Coverage: 17 new unit tests across 9 test classes covering detection accuracy, false positive prevention, and integration. Suite total: 54/54 green.
+
+### Phase 6: DevSecOps Hardening & Orchestration (In Progress)
 - [ ] Strict Secret Vaulting Integration: Standardize target parsing inputs to smoothly ingest access tokens, authentication forms, and target URLs exclusively via secure environment managers (like GitHub Secrets or AWS Secrets Manager).
 - [ ] Containerized Security Runners: Package the entire application suite into a minimal, hardened Docker image to eliminate host-level runner environment drifting and minimize the toolkit's attack surface.
 - [ ] Concurrent Targeted Orchestration: Refactor the core engine's request loops to support async/multithreaded parsing, allowing operators to safely run parallel audits across multiple internal network environments simultaneously.
@@ -159,7 +169,7 @@ The Security Automation Toolkit is actively developed under a phased release cyc
 
 This toolkit is part of a broader security portfolio. See also:
 
-- **[LLM Security Lab](https://github.com/raj469-doit/llm-security-lab)** — 83 active test cases covering 5 OWASP LLM Top 10 categories: prompt injection, sensitive information disclosure, improper output handling, excessive agency, and system prompt leakage. Built with the same Python automation stack (Pytest, GitHub Actions).
+- **[LLM Security Lab](https://github.com/raj469-doit/llm-security-lab)** — 138 active test cases covering OWASP LLM Top 10 (2025) + OWASP Top 10 for Agentic Applications (2026): prompt injection, sensitive information disclosure, improper output handling, excessive agency, system prompt leakage, vector/embedding weaknesses, and agentic agent security. Built with the same Python automation stack (Pytest, GitHub Actions).
 
 ## Disclaimer
 This tool is intended for authorized security assessments and quality assurance validation tracking only. Scanning targets without explicit, written boundary permissions from the infrastructure owners is strictly prohibited.
