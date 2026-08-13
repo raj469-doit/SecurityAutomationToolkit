@@ -53,8 +53,9 @@ SecurityAutomationToolkit/
 │   ├── security_dashboard.html       # Interactive CSS-only visualization dashboard
 │   └── executive_brief.md            # Stakeholder Markdown briefing report
 │
-├── tests/                       # 100% Mocked Integration Checkpoints (37 tests)
+├── tests/                       # 100% Mocked Integration Checkpoints (54 tests)
 │   ├── test_access_control.py   # A01:2025 Broken Access Control validation
+│   ├── test_api_scanner.py      # OWASP API Security Top 10 (2023) — 17 tests
 │   ├── test_cookies.py
 │   ├── test_forms.py
 │   ├── test_headers.py
@@ -65,6 +66,7 @@ SecurityAutomationToolkit/
 │   └── test_reporting.py        # Validates differential math and asset generation
 │
 ├── security_score.py            # Primary CLI Scanner Engine & Reporting Orchestration
+├── api_scanner.py               # API Security Scanner — OWASP API Security Top 10 (2023)
 ├── generate_report.py           # Metrics Aggregator and Reporting Compiler Core
 ├── requirements.txt             # Production Runtime Dependencies
 └── requirements-dev.txt         # Quality Assurance & Engineering Tooling
